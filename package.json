@@ -1,0 +1,29 @@
+{
+    "name": "bam-ai",
+    "version": "1.0.0",
+    "description": "BAM.ai - AI-Powered Employee Knowledge Cloning Platform",
+    "private": true,
+    "scripts": {
+        "install:all": "npm install && cd desktop && npm install && cd renderer && npm install && cd ../../backend && npm install",
+        "dev": "concurrently \"npm run dev:backend\" \"npm run dev:desktop\"",
+        "dev:desktop": "cd desktop && npm run dev",
+        "dev:backend": "cd backend && npm run dev",
+        "build": "npm run build:desktop",
+        "build:desktop": "cd desktop && npm run build",
+        "start:backend": "cd backend && npm start",
+        "lint": "echo 'No linting configured yet'",
+        "test": "echo 'No tests configured yet'"
+    },
+    "devDependencies": {
+        "concurrently": "^8.2.2"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/bam-ai/bam-ai.git"
+    },
+    "author": "BAM.ai",
+    "license": "UNLICENSED"
+}

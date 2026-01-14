@@ -1,0 +1,372 @@
+const { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, Menu, dialog } = require('electron');
+const path = require('path');
+const Store = require('electron-store');
+const { fork } = require('child_process');
+const { autoUpdater } = require('electron-updater');
+
+// Initialize secure storage with unique name for BAM.ai
+const store = new Store({
+  encryptionKey: 'bam-ai-unique-secure-key-2024',
+  name: 'bam-ai-config-v1'
+});
+
+let mainWindow;
+let backendProcess = null;
+
+// =====================================================
+// AUTO-UPDATER CONFIGURATION
+// =====================================================
+autoUpdater.autoDownload = false; // Manual download after user confirms
+autoUpdater.autoInstallOnAppQuit = true;
+
+// Logging for debugging
+autoUpdater.logger = require('electron-log');
+autoUpdater.logger.transports.file.level = 'info';
+
+function setupAutoUpdater() {
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[UPDATER] Checking for updates...');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', { status: 'checking' });
+    }
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[UPDATER] Update available:', info.version);
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Available',
+      message: `A new version (${info.version}) is available!`,
+      detail: 'Would you like to download and install it now?',
+      buttons: ['Download Now', 'Later'],
+      defaultId: 0
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.downloadUpdate();
+      }
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[UPDATER] No updates available');
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'No Updates',
+      message: 'You are running the latest version!',
+      buttons: ['OK']
+    });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log(`[UPDATER] Download progress: ${Math.round(progress.percent)}%`);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', {
+        status: 'downloading',
+        percent: Math.round(progress.percent)
+      });
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[UPDATER] Update downloaded:', info.version);
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Ready',
+      message: 'Update downloaded successfully!',
+      detail: 'The app will restart to install the update.',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[UPDATER] Error:', err);
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Update Error',
+      message: 'Failed to check for updates',
+      detail: err.message,
+      buttons: ['OK']
+    });
+  });
+}
+
+function checkForUpdates() {
+  autoUpdater.checkForUpdates();
+}
+
+// =====================================================
+// APPLICATION MENU
+// =====================================================
+function createMenu() {
+  const isMac = process.platform === 'darwin';
+
+  const template = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Check for Updates...',
+          click: () => checkForUpdates()
+        },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    {
+      label: 'File',
+      submenu: [
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac ? [
+          { type: 'separator' },
+          { role: 'front' }
+        ] : [
+          { role: 'close' }
+        ])
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Check for Updates...',
+          click: () => checkForUpdates()
+        },
+        { type: 'separator' },
+        {
+          label: 'About BAM.ai',
+          click: async () => {
+            const { version } = require('../package.json');
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'About BAM.ai',
+              message: 'BAM.ai',
+              detail: `Version: ${version}\n\nAI-Powered Employee Knowledge Cloning Platform`,
+              buttons: ['OK']
+            });
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+// =====================================================
+// BACKEND SERVER
+// =====================================================
+function startBackendServer() {
+  return new Promise((resolve, reject) => {
+    let backendPath;
+    if (app.isPackaged) {
+      backendPath = path.join(process.resourcesPath, 'backend', 'src', 'server.js');
+    } else {
+      backendPath = path.join(__dirname, '..', '..', 'backend', 'src', 'server.js');
+    }
+
+    console.log('Starting backend server from:', backendPath);
+
+    backendProcess = fork(backendPath, [], {
+      cwd: path.dirname(backendPath),
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        PORT: '3001'
+      },
+      silent: true
+    });
+
+    backendProcess.stdout?.on('data', (data) => {
+      console.log('[Backend]:', data.toString());
+    });
+
+    backendProcess.stderr?.on('data', (data) => {
+      console.error('[Backend Error]:', data.toString());
+    });
+
+    backendProcess.on('error', (err) => {
+      console.error('Failed to start backend:', err);
+      reject(err);
+    });
+
+    backendProcess.on('exit', (code) => {
+      console.log('Backend process exited with code:', code);
+      backendProcess = null;
+    });
+
+    setTimeout(() => {
+      console.log('Backend server should be ready');
+      resolve();
+    }, 2000);
+  });
+}
+
+function stopBackendServer() {
+  if (backendProcess) {
+    console.log('Stopping backend server...');
+    backendProcess.kill();
+    backendProcess = null;
+  }
+}
+
+// =====================================================
+// WINDOW CREATION
+// =====================================================
+function createWindow() {
+  const isDev = !app.isPackaged && process.env.NODE_ENV === 'development';
+  const isMac = process.platform === 'darwin';
+
+  const windowOptions = {
+    width: 1400,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 700,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '..', 'preload.js'),
+      webSecurity: true
+    },
+    backgroundColor: '#0a0a0f',
+    show: true,
+    title: 'BAM.ai'
+  };
+
+  if (isMac) {
+    windowOptions.titleBarStyle = 'hiddenInset';
+    windowOptions.trafficLightPosition = { x: 16, y: 16 };
+  } else {
+    windowOptions.frame = true;
+    windowOptions.autoHideMenuBar = false; // Show menu on Windows for "Check for Updates"
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Page failed to load:', errorCode, errorDescription);
+  });
+
+  mainWindow.webContents.on('crashed', () => {
+    console.error('Renderer process crashed!');
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('Page finished loading');
+  });
+
+  if (app.isPackaged) {
+    const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+    console.log('Loading packaged app from:', indexPath);
+    mainWindow.loadFile(indexPath);
+  } else if (isDev) {
+    mainWindow.loadURL('http://localhost:3000');
+    mainWindow.webContents.openDevTools();
+  } else {
+    const indexPath = path.join(__dirname, '..', 'renderer', 'build', 'index.html');
+    console.log('Loading from:', indexPath);
+    mainWindow.loadFile(indexPath);
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+// =====================================================
+// APP LIFECYCLE
+// =====================================================
+app.whenReady().then(() => {
+  console.log('App ready, starting services...');
+
+  // Setup auto-updater
+  setupAutoUpdater();
+
+  // Create application menu
+  createMenu();
+
+  // Start backend server in background
+  startBackendServer().catch(err => {
+    console.error('Backend failed to start:', err);
+  });
+
+  // Register IPC handlers
+  require('./ipc-handlers')(ipcMain, null, store, desktopCapturer);
+
+  createWindow();
+  console.log('Window created');
+
+  require('./ipc-handlers').updateMainWindow?.(mainWindow);
+
+  // Check for updates on startup (optional - silent check)
+  if (app.isPackaged) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(err => {
+        console.log('[UPDATER] Startup check failed:', err.message);
+      });
+    }, 5000);
+  }
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    stopBackendServer();
+    app.quit();
+  }
+});
+
+app.on('before-quit', () => {
+  stopBackendServer();
+});

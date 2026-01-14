@@ -1,0 +1,105 @@
+{
+  "name": "bam-ai-desktop",
+  "version": "1.0.1",
+  "description": "BAM.ai - AI-Powered Employee Knowledge Cloning Platform",
+  "main": "main/index.js",
+  "scripts": {
+    "start": "concurrently \"npm run start:renderer\" \"wait-on http://localhost:3000 && npm run start:electron\"",
+    "start:electron": "electron .",
+    "start:renderer": "cd renderer && npm start",
+    "build": "npm run build:renderer && npm run build:electron",
+    "build:renderer": "cd renderer && npm run build",
+    "build:electron": "electron-builder",
+    "build:mac": "npm run build:renderer && electron-builder --mac",
+    "build:win": "npm run build:renderer && electron-builder --win",
+    "publish": "npm run build:renderer && electron-builder --mac --win --publish always",
+    "publish:mac": "npm run build:renderer && electron-builder --mac --publish always",
+    "publish:win": "npm run build:renderer && electron-builder --win --publish always",
+    "dev": "concurrently \"npm run start:renderer\" \"wait-on http://localhost:3000 && electron .\"",
+    "postinstall": "cd renderer && npm install"
+  },
+  "build": {
+    "appId": "com.bamai.desktop.v1",
+    "productName": "BAM-AI",
+    "icon": "build/icon.png",
+    "afterPack": "./build/afterPack.js",
+    "publish": {
+      "provider": "github",
+      "owner": "tyler-bam-ai",
+      "repo": "bam",
+      "releaseType": "release"
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main/**/*",
+      "preload.js",
+      "renderer/build/**/*",
+      "build/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!node_modules/**/*",
+          "!uploads/**/*",
+          "!*.log"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": null,
+      "entitlementsInherit": null,
+      "type": "development"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "keywords": [
+    "electron",
+    "react",
+    "ai",
+    "knowledge-management"
+  ],
+  "author": "BAM.ai",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "electron-log": "^5.4.3",
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.1.7",
+    "uuid": "^9.0.1"
+  }
+}

@@ -1,0 +1,92 @@
+/* Skeleton Loading Styles */
+
+.skeleton {
+    background: linear-gradient(90deg,
+            rgba(255, 255, 255, 0.05) 25%,
+            rgba(255, 255, 255, 0.1) 50%,
+            rgba(255, 255, 255, 0.05) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Text skeleton */
+.skeleton-text {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Card skeleton */
+.skeleton-card {
+    background: var(--color-bg-secondary, #1e1e1e);
+    border: 1px solid var(--color-border, #333);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.skeleton-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Message skeleton */
+.skeleton-message {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 0;
+}
+
+.skeleton-message.user {
+    flex-direction: row-reverse;
+}
+
+.skeleton-message-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    max-width: 70%;
+}
+
+/* Table row skeleton */
+.skeleton-table-row {
+    display: flex;
+    gap: 24px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--color-border, #333);
+}
+
+/* Page skeleton */
+.skeleton-page {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.skeleton-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.skeleton-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}

@@ -1,0 +1,265 @@
+/* ============================================
+   Value Metrics Cards
+   ============================================ */
+
+.value-metrics {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-xl);
+    padding: var(--space-5);
+    margin-bottom: var(--space-6);
+}
+
+.value-metrics-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-5);
+}
+
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.header-title svg {
+    color: var(--color-accent-primary);
+}
+
+.header-title h3 {
+    margin: 0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+}
+
+.demo-badge {
+    font-size: var(--font-size-xs);
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    color: white;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    font-weight: var(--font-weight-medium);
+}
+
+/* Primary Metrics Grid */
+.primary-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+    margin-bottom: var(--space-5);
+}
+
+.metric-card {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-lg);
+    border: 1px solid transparent;
+    transition: all var(--transition-fast);
+}
+
+.metric-card:hover {
+    border-color: var(--color-border-subtle);
+    transform: translateY(-2px);
+}
+
+.metric-card.featured {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(16, 185, 129, 0.05));
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.metric-icon {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-lg);
+    flex-shrink: 0;
+}
+
+.metric-hours .metric-icon {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1));
+    color: #a78bfa;
+}
+
+.metric-questions .metric-icon {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1));
+    color: #60a5fa;
+}
+
+.metric-value-generated .metric-icon {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.1));
+    color: #4ade80;
+}
+
+.metric-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.metric-value {
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-text-primary);
+    line-height: 1;
+}
+
+.metric-unit {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-tertiary);
+    margin-left: var(--space-1);
+}
+
+.metric-label {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.metric-delta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--font-size-xs);
+    margin-top: var(--space-1);
+}
+
+.metric-delta.positive {
+    color: #22c55e;
+}
+
+.metric-delta.negative {
+    color: #ef4444;
+}
+
+/* Weekly Activity Chart */
+.weekly-activity {
+    padding: var(--space-4);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-4);
+}
+
+.weekly-activity h4 {
+    margin: 0 0 var(--space-4);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-secondary);
+}
+
+.activity-chart {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    height: 120px;
+    gap: var(--space-2);
+}
+
+.chart-bar-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+}
+
+.chart-bar {
+    width: 100%;
+    max-width: 40px;
+    background: linear-gradient(180deg, #8b5cf6, #6366f1);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: var(--space-1);
+    margin-top: auto;
+}
+
+.chart-bar:hover {
+    background: linear-gradient(180deg, #a78bfa, #818cf8);
+    transform: scaleY(1.05);
+    transform-origin: bottom;
+}
+
+.bar-value {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: white;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.chart-bar:hover .bar-value {
+    opacity: 1;
+}
+
+.bar-label {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    margin-top: var(--space-2);
+}
+
+/* Secondary Metrics */
+.secondary-metrics {
+    display: flex;
+    justify-content: space-around;
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+.secondary-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.secondary-stat svg {
+    color: var(--color-text-tertiary);
+}
+
+.secondary-value {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-text-primary);
+}
+
+.secondary-label {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .primary-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .metric-card {
+        padding: var(--space-4);
+    }
+
+    .metric-value {
+        font-size: var(--font-size-2xl);
+    }
+}
+
+@media (max-width: 600px) {
+    .secondary-metrics {
+        flex-direction: column;
+        gap: var(--space-3);
+        align-items: flex-start;
+    }
+
+    .secondary-stat {
+        flex-direction: row;
+        gap: var(--space-2);
+    }
+}
