@@ -1,29 +1,282 @@
 /**
- * SQLite Database Connection
+ * Database Connection - SQLite (local) or PostgreSQL (Railway)
  * 
- * Uses better-sqlite3 for synchronous operations (faster for Electron).
- * Database file is stored in the backend directory.
+ * Uses sql.js for local development (pure JavaScript SQLite)
+ * Uses pg for production when DATABASE_URL is set (Railway PostgreSQL)
  */
 
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
 
-// Database file path
+// Check if we should use PostgreSQL (Railway)
+const USE_POSTGRES = !!process.env.DATABASE_URL;
+
+if (USE_POSTGRES) {
+    console.log('[DB] PostgreSQL mode detected (DATABASE_URL set)');
+} else {
+    console.log('[DB] SQLite mode (local development)');
+}
+
+// Database file path (for SQLite)
 const DB_DIR = path.join(__dirname, '../../data');
 const DB_PATH = path.join(DB_DIR, 'bam.db');
 
-// Ensure data directory exists
-if (!fs.existsSync(DB_DIR)) {
+// Ensure data directory exists (for SQLite)
+if (!USE_POSTGRES && !fs.existsSync(DB_DIR)) {
     fs.mkdirSync(DB_DIR, { recursive: true });
 }
 
-// Create database connection
-const db = new Database(DB_PATH);
+// Database instance (initialized async)
+let db = null;
+let SQL = null;
+let initPromise = null;
+let pgPool = null;
 
-// Enable foreign keys and WAL mode for better performance
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+// Import pg for PostgreSQL
+const { Pool } = USE_POSTGRES ? require('pg') : { Pool: null };
+
+/**
+ * Initialize the database (call this before using db)
+ */
+async function initializeDatabase() {
+    if (USE_POSTGRES) {
+        if (pgPool) return pgPool;
+
+        console.log('[DB] Connecting to PostgreSQL...');
+        pgPool = new Pool({
+            connectionString: process.env.DATABASE_URL,
+            ssl: { rejectUnauthorized: false }
+        });
+
+        // Test connection
+        try {
+            const client = await pgPool.connect();
+            console.log('[DB] PostgreSQL connected successfully');
+            client.release();
+        } catch (err) {
+            console.error('[DB] PostgreSQL connection failed:', err);
+            throw err;
+        }
+
+        // Initialize PostgreSQL schema
+        await initializePostgresSchema();
+
+        return pgPool;
+    }
+
+    // SQLite path (local development)
+    if (db) return db;
+
+    if (initPromise) return initPromise;
+
+    initPromise = (async () => {
+        console.log('[DB] Initializing sql.js...');
+        SQL = await initSqlJs();
+
+        // Load existing database or create new one
+        if (fs.existsSync(DB_PATH)) {
+            const fileBuffer = fs.readFileSync(DB_PATH);
+            db = new SQL.Database(fileBuffer);
+            console.log('[DB] Loaded existing database from:', DB_PATH);
+        } else {
+            db = new SQL.Database();
+            console.log('[DB] Created new database');
+        }
+
+        // Enable foreign keys
+        db.run('PRAGMA foreign_keys = ON');
+
+        // Initialize schema
+        initializeSchema();
+
+        // Schedule periodic saves
+        setInterval(() => saveDatabase(), 30000); // Save every 30 seconds
+
+        return db;
+    })();
+
+    return initPromise;
+}
+
+/**
+ * Initialize PostgreSQL schema
+ */
+async function initializePostgresSchema() {
+    const client = await pgPool.connect();
+    try {
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL DEFAULT '',
+                name TEXT,
+                role TEXT NOT NULL DEFAULT 'knowledge_consumer',
+                company_id TEXT,
+                google_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS companies (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                industry TEXT,
+                plan TEXT DEFAULT 'starter',
+                status TEXT DEFAULT 'active',
+                contact_name TEXT,
+                contact_email TEXT,
+                contact_phone TEXT,
+                website TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS clients (
+                id TEXT PRIMARY KEY,
+                company_name TEXT NOT NULL,
+                contact_name TEXT,
+                contact_email TEXT,
+                contact_phone TEXT,
+                industry TEXT,
+                website TEXT,
+                plan TEXT DEFAULT 'starter',
+                seats INTEGER DEFAULT 5,
+                status TEXT DEFAULT 'active',
+                responses TEXT,
+                knowledge_base TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                client_id TEXT,
+                brain_type TEXT,
+                title TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('[DB] PostgreSQL schema initialized');
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Save database to disk
+ */
+function saveDatabase() {
+    if (!db) return;
+    try {
+        const data = db.export();
+        const buffer = Buffer.from(data);
+        fs.writeFileSync(DB_PATH, buffer);
+    } catch (err) {
+        console.error('[DB] Error saving database:', err);
+    }
+}
+
+/**
+ * Get database instance (sync - assumes already initialized)
+ */
+function getDb() {
+    if (!db) {
+        throw new Error('Database not initialized. Call initializeDatabase() first.');
+    }
+    return db;
+}
+
+/**
+ * Helper to run a query and return results as array of objects
+ */
+function all(sql, params = []) {
+    if (USE_POSTGRES) {
+        // Convert ? to $1, $2, etc
+        let pgSql = sql;
+        let paramIndex = 0;
+        pgSql = pgSql.replace(/\?/g, () => `$${++paramIndex}`);
+        return pgPool.query(pgSql, params).then(res => res.rows);
+    }
+
+    const stmt = db.prepare(sql);
+    if (params.length > 0) {
+        stmt.bind(params);
+    }
+    const results = [];
+    while (stmt.step()) {
+        const row = stmt.getAsObject();
+        results.push(row);
+    }
+    stmt.free();
+    return results;
+}
+
+/**
+ * Helper to get first row
+ */
+function get(sql, params = []) {
+    if (USE_POSTGRES) {
+        return all(sql, params).then(rows => rows[0] || null);
+    }
+    const results = all(sql, params);
+    return results[0] || null;
+}
+
+/**
+ * Helper to run a statement (INSERT/UPDATE/DELETE)
+ */
+function run(sql, params = []) {
+    if (USE_POSTGRES) {
+        let pgSql = sql;
+        let paramIndex = 0;
+        pgSql = pgSql.replace(/\?/g, () => `$${++paramIndex}`);
+        return pgPool.query(pgSql, params).then(res => ({
+            changes: res.rowCount,
+            lastInsertRowid: null
+        }));
+    }
+
+    db.run(sql, params);
+    saveDatabase(); // Auto-save on writes
+    return {
+        changes: db.getRowsModified(),
+        lastInsertRowid: null // sql.js doesn't easily expose this
+    };
+}
+
+/**
+ * Prepare a statement (sql.js compatible wrapper)
+ * Returns sync for SQLite, async for PostgreSQL
+ */
+function prepare(sql) {
+    return {
+        run: (...params) => run(sql, params),
+        get: (...params) => get(sql, params),
+        all: (...params) => all(sql, params)
+    };
+}
+
+/**
+ * Execute raw SQL (for schema creation)
+ */
+function exec(sql) {
+    if (USE_POSTGRES) {
+        return pgPool.query(sql);
+    }
+    db.exec(sql);
+    saveDatabase();
+}
 
 /**
  * Initialize database schema
@@ -38,9 +291,9 @@ function initializeSchema() {
             name TEXT,
             role TEXT NOT NULL DEFAULT 'knowledge_consumer',
             company_id TEXT,
+            google_id TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Companies/Clients table
@@ -52,7 +305,10 @@ function initializeSchema() {
             status TEXT DEFAULT 'active',
             contact_name TEXT,
             contact_email TEXT,
-            settings TEXT, -- JSON blob for flexible settings
+            contact_phone TEXT,
+            website TEXT,
+            transcript TEXT,
+            settings TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -62,41 +318,37 @@ function initializeSchema() {
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
             company_id TEXT,
-            brain_type TEXT, -- 'operations', 'employee', 'branding'
+            brain_type TEXT,
             title TEXT,
             pinned INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Messages table
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
             conversation_id TEXT NOT NULL,
-            role TEXT NOT NULL, -- 'user', 'assistant', 'system'
+            role TEXT NOT NULL,
             content TEXT NOT NULL,
-            metadata TEXT, -- JSON blob for sources, confidence, etc.
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+            metadata TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
-        -- Knowledge items (documents, recordings, etc.)
+        -- Knowledge items
         CREATE TABLE IF NOT EXISTS knowledge_items (
             id TEXT PRIMARY KEY,
             company_id TEXT NOT NULL,
-            type TEXT NOT NULL, -- 'document', 'recording', 'voice_memo', 'api'
+            type TEXT NOT NULL,
             title TEXT NOT NULL,
-            content TEXT, -- Extracted text content
-            file_path TEXT, -- Path to original file
+            content TEXT,
+            file_path TEXT,
             file_size INTEGER,
             mime_type TEXT,
-            status TEXT DEFAULT 'processing', -- 'processing', 'ready', 'error'
-            metadata TEXT, -- JSON blob for additional info
+            status TEXT DEFAULT 'processing',
+            metadata TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Tasks table
@@ -110,57 +362,52 @@ function initializeSchema() {
             due_date TEXT,
             priority TEXT DEFAULT 'medium',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
-        -- Widgets table (customer chat widgets)
+        -- Widgets table
         CREATE TABLE IF NOT EXISTS widgets (
             id TEXT PRIMARY KEY,
             company_id TEXT NOT NULL,
             name TEXT NOT NULL,
-            config TEXT, -- JSON blob for widget configuration
+            config TEXT,
             active INTEGER DEFAULT 1,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Social accounts table
         CREATE TABLE IF NOT EXISTS social_accounts (
             id TEXT PRIMARY KEY,
             company_id TEXT NOT NULL,
-            platform TEXT NOT NULL, -- 'twitter', 'linkedin', 'instagram', etc.
-            account_id TEXT, -- Platform-specific account ID
+            platform TEXT NOT NULL,
+            account_id TEXT,
             username TEXT,
             display_name TEXT,
-            access_token_enc TEXT, -- Encrypted access token
-            refresh_token_enc TEXT, -- Encrypted refresh token
+            access_token_enc TEXT,
+            refresh_token_enc TEXT,
             token_expires_at TEXT,
             status TEXT DEFAULT 'active',
-            metadata TEXT, -- JSON blob for additional info
+            metadata TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Scheduled posts table
         CREATE TABLE IF NOT EXISTS scheduled_posts (
             id TEXT PRIMARY KEY,
             company_id TEXT NOT NULL,
-            platforms TEXT NOT NULL, -- JSON array of platform names
+            platforms TEXT NOT NULL,
             content TEXT NOT NULL,
-            media_paths TEXT, -- JSON array of media file paths
+            media_paths TEXT,
             scheduled_for TEXT,
-            status TEXT DEFAULT 'draft', -- 'draft', 'scheduled', 'posted', 'failed'
-            approval_status TEXT DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+            status TEXT DEFAULT 'draft',
+            approval_status TEXT DEFAULT 'pending',
             posted_at TEXT,
             error_message TEXT,
             metadata TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Content campaigns table
@@ -169,14 +416,13 @@ function initializeSchema() {
             company_id TEXT NOT NULL,
             name TEXT NOT NULL,
             description TEXT,
-            status TEXT DEFAULT 'draft', -- 'draft', 'active', 'completed', 'archived'
-            config TEXT, -- JSON blob for campaign settings
+            status TEXT DEFAULT 'draft',
+            config TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
-        -- Videos table (company_id can be NULL for local/unauthenticated uploads)
+        -- Videos table
         CREATE TABLE IF NOT EXISTS videos (
             id TEXT PRIMARY KEY,
             campaign_id TEXT,
@@ -184,15 +430,13 @@ function initializeSchema() {
             title TEXT,
             file_path TEXT NOT NULL,
             thumbnail_path TEXT,
-            duration INTEGER, -- Duration in seconds
-            status TEXT DEFAULT 'uploading', -- 'uploading', 'processing', 'ready', 'error'
-            source TEXT DEFAULT 'upload', -- 'upload', 'youtube', 'url'
+            duration INTEGER,
+            status TEXT DEFAULT 'uploading',
+            source TEXT DEFAULT 'upload',
             source_url TEXT,
-            metadata TEXT, -- JSON blob for video metadata
+            metadata TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Clips table
@@ -201,29 +445,28 @@ function initializeSchema() {
             video_id TEXT NOT NULL,
             title TEXT,
             description TEXT,
-            start_time REAL NOT NULL, -- Start time in seconds
-            end_time REAL NOT NULL, -- End time in seconds
-            duration REAL, -- Duration in seconds
-            virality_score INTEGER, -- 0-100 score
-            virality_hook INTEGER DEFAULT 0, -- Hook quality (0-25)
-            virality_emotion INTEGER DEFAULT 0, -- Emotional impact (0-25)
-            virality_insight INTEGER DEFAULT 0, -- Information density (0-20)
-            virality_cta INTEGER DEFAULT 0, -- Call-to-action strength (0-15)
-            virality_quality INTEGER DEFAULT 0, -- Video quality (0-15)
-            aspect_ratio TEXT DEFAULT '9:16', -- '9:16', '16:9', '1:1'
+            start_time REAL NOT NULL,
+            end_time REAL NOT NULL,
+            duration REAL,
+            virality_score INTEGER,
+            virality_hook INTEGER DEFAULT 0,
+            virality_emotion INTEGER DEFAULT 0,
+            virality_insight INTEGER DEFAULT 0,
+            virality_cta INTEGER DEFAULT 0,
+            virality_quality INTEGER DEFAULT 0,
+            aspect_ratio TEXT DEFAULT '9:16',
             caption_style TEXT,
-            file_path TEXT, -- Path to exported clip
+            file_path TEXT,
             thumbnail_path TEXT,
-            transcript TEXT, -- Clip transcript
-            ai_title TEXT, -- AI-generated viral title
-            ai_description TEXT, -- AI-generated description
-            ai_analysis TEXT, -- JSON blob for AI analysis details
-            status TEXT DEFAULT 'pending', -- 'pending', 'approved', 'rejected', 'scheduled', 'exported'
-            scheduled_for TEXT, -- Publish schedule datetime
-            metadata TEXT, -- JSON blob for AI-generated metadata
+            transcript TEXT,
+            ai_title TEXT,
+            ai_description TEXT,
+            ai_analysis TEXT,
+            status TEXT DEFAULT 'pending',
+            scheduled_for TEXT,
+            metadata TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Video transcripts table
@@ -233,28 +476,25 @@ function initializeSchema() {
             full_text TEXT,
             language TEXT DEFAULT 'en',
             duration REAL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
-        -- Word-level timings for caption sync
+        -- Word-level timings
         CREATE TABLE IF NOT EXISTS transcript_words (
             id TEXT PRIMARY KEY,
             transcript_id TEXT NOT NULL,
             word TEXT NOT NULL,
             start_time REAL NOT NULL,
-            end_time REAL NOT NULL,
-            FOREIGN KEY (transcript_id) REFERENCES video_transcripts(id) ON DELETE CASCADE
+            end_time REAL NOT NULL
         );
 
-        -- Segment-level timings (sentences/phrases)
+        -- Segment-level timings
         CREATE TABLE IF NOT EXISTS transcript_segments (
             id TEXT PRIMARY KEY,
             transcript_id TEXT NOT NULL,
             text TEXT NOT NULL,
             start_time REAL NOT NULL,
-            end_time REAL NOT NULL,
-            FOREIGN KEY (transcript_id) REFERENCES video_transcripts(id) ON DELETE CASCADE
+            end_time REAL NOT NULL
         );
 
         -- Onboarding responses table
@@ -265,8 +505,7 @@ function initializeSchema() {
             question_id TEXT NOT NULL,
             response TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (company_id) REFERENCES companies(id)
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
         -- Activity log table
@@ -275,13 +514,13 @@ function initializeSchema() {
             user_id TEXT,
             company_id TEXT,
             action TEXT NOT NULL,
-            entity_type TEXT, -- 'document', 'video', 'post', etc.
+            entity_type TEXT,
             entity_id TEXT,
-            details TEXT, -- JSON blob for additional details
+            details TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
-        -- Create indexes for common queries
+        -- Create indexes
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
         CREATE INDEX IF NOT EXISTS idx_users_company ON users(company_id);
         CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id);
@@ -294,6 +533,7 @@ function initializeSchema() {
         CREATE INDEX IF NOT EXISTS idx_social_accounts_company ON social_accounts(company_id);
     `);
 
+    saveDatabase();
     console.log('✅ Database schema initialized');
 }
 
@@ -301,7 +541,7 @@ function initializeSchema() {
  * Seed demo accounts if they don't exist
  */
 function seedDemoAccounts(bcrypt) {
-    const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@bam.ai');
+    const existingAdmin = get('SELECT id FROM users WHERE email = ?', ['admin@bam.ai']);
 
     if (!existingAdmin) {
         const { v4: uuidv4 } = require('uuid');
@@ -309,36 +549,53 @@ function seedDemoAccounts(bcrypt) {
 
         // Create demo company
         const companyId = uuidv4();
-        db.prepare(`
+        run(`
             INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(companyId, 'Demo Company', 'Technology', 'professional', 'active', 'Demo Admin', 'admin@bam.ai');
+        `, [companyId, 'Demo Company', 'Technology', 'professional', 'active', 'Demo Admin', 'admin@bam.ai']);
 
         // Create demo users
-        db.prepare(`
+        run(`
             INSERT INTO users (id, email, password_hash, name, role, company_id)
             VALUES (?, ?, ?, ?, ?, ?)
-        `).run(uuidv4(), 'admin@bam.ai', passwordHash, 'BAM Admin', 'bam_admin', companyId);
+        `, [uuidv4(), 'admin@bam.ai', passwordHash, 'BAM Admin', 'bam_admin', companyId]);
 
-        db.prepare(`
+        run(`
             INSERT INTO users (id, email, password_hash, name, role, company_id)
             VALUES (?, ?, ?, ?, ?, ?)
-        `).run(uuidv4(), 'provider@demo.com', passwordHash, 'Knowledge Provider', 'knowledge_provider', companyId);
+        `, [uuidv4(), 'provider@demo.com', passwordHash, 'Knowledge Provider', 'knowledge_provider', companyId]);
 
-        db.prepare(`
+        run(`
             INSERT INTO users (id, email, password_hash, name, role, company_id)
             VALUES (?, ?, ?, ?, ?, ?)
-        `).run(uuidv4(), 'consumer@demo.com', passwordHash, 'Knowledge Consumer', 'knowledge_consumer', companyId);
+        `, [uuidv4(), 'consumer@demo.com', passwordHash, 'Knowledge Consumer', 'knowledge_consumer', companyId]);
 
         console.log('✅ Demo accounts seeded');
     }
 }
 
-// Initialize schema on module load
-initializeSchema();
+// Create a db-like object with prepare method for compatibility
+const dbWrapper = {
+    prepare: prepare,
+    exec: exec,
+    run: run,
+    get: get,
+    all: all,
+    pragma: () => { }, // No-op for sql.js
+    close: () => {
+        if (db) {
+            saveDatabase();
+            db.close();
+            db = null;
+        }
+    }
+};
 
 module.exports = {
-    db,
+    db: dbWrapper,
+    initializeDatabase,
     initializeSchema,
-    seedDemoAccounts
+    seedDemoAccounts,
+    saveDatabase,
+    getDb
 };

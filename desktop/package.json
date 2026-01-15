@@ -1,6 +1,6 @@
 {
   "name": "bam-ai-desktop",
-  "version": "1.0.1",
+  "version": "1.2.9",
   "description": "BAM.ai - AI-Powered Employee Knowledge Cloning Platform",
   "main": "main/index.js",
   "scripts": {
@@ -77,8 +77,9 @@
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "runAfterFinish": true
     }
   },
   "keywords": [
@@ -90,6 +91,7 @@
   "author": "BAM.ai",
   "license": "UNLICENSED",
   "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
     "concurrently": "^8.2.2",
     "electron": "^28.1.0",
     "electron-builder": "^24.9.1",

@@ -140,29 +140,56 @@ function Settings() {
     }
 
     async function saveApiKey(service, key) {
+        console.log(`[SETTINGS] saveApiKey called: service=${service}, keyLength=${key?.length}`);
+
         if (key && !key.includes('•')) {
+            console.log(`[SETTINGS] Saving ${service} key...`);
+
             // Save to Electron store if available
             if (window.electronAPI?.apiKeys?.set) {
-                await window.electronAPI.apiKeys.set(service, key);
+                console.log(`[SETTINGS] Saving to electron-store: apikeys.${service}`);
+                try {
+                    await window.electronAPI.apiKeys.set(service, key);
+                    console.log(`[SETTINGS] electron-store save SUCCESS`);
+                } catch (err) {
+                    console.error(`[SETTINGS] electron-store save FAILED:`, err);
+                }
+            } else {
+                console.log(`[SETTINGS] electron-store NOT available`);
             }
-            // Also save to localStorage as fallback (for dev browser mode)
-            localStorage.setItem(`${service}_api_key`, key);
+
+            // Also save to localStorage as fallback
+            console.log(`[SETTINGS] Saving to localStorage: ${service}_api_key`);
+            try {
+                localStorage.setItem(`${service}_api_key`, key);
+                // Verify it was saved
+                const verify = localStorage.getItem(`${service}_api_key`);
+                console.log(`[SETTINGS] localStorage verify: saved=${!!verify}, length=${verify?.length}`);
+            } catch (err) {
+                console.error(`[SETTINGS] localStorage save FAILED:`, err);
+            }
 
             // Save to backend API for server-side access
             try {
-                await fetch('http://localhost:3001/api/system/api-keys', {
+                console.log(`[SETTINGS] Saving to backend API...`);
+                const response = await fetch('http://localhost:3001/api/system/api-keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ service, key })
                 });
+                console.log(`[SETTINGS] Backend API response: ${response.status}`);
             } catch (err) {
-                console.error('Failed to save API key to backend:', err);
+                console.error('[SETTINGS] Failed to save API key to backend:', err);
             }
 
             setApiKeys(prev => ({
                 ...prev,
                 [service]: '••••••••••••••••'
             }));
+
+            console.log(`[SETTINGS] ✅ ${service} key save complete`);
+        } else {
+            console.log(`[SETTINGS] Key not saved (empty or masked)`);
         }
     }
 

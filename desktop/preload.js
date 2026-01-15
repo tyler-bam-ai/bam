@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     app: {
         getVersion: () => ipcRenderer.invoke('app:get-version'),
         getPlatform: () => ipcRenderer.invoke('app:get-platform')
+    },
+
+    // Update Status Listener
+    onUpdateStatus: (callback) => {
+        ipcRenderer.on('update-status', callback);
     }
 });
 

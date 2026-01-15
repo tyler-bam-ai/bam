@@ -49,12 +49,7 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-not-available', () => {
     console.log('[UPDATER] No updates available');
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'No Updates',
-      message: 'You are running the latest version!',
-      buttons: ['OK']
-    });
+    // Just log - no popup needed when already on latest version
   });
 
   autoUpdater.on('download-progress', (progress) => {
@@ -148,7 +143,16 @@ function createMenu() {
       submenu: [
         { role: 'reload' },
         { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        {
+          label: 'Toggle Developer Tools',
+          accelerator: isMac ? 'Cmd+Option+I' : 'Ctrl+Shift+I',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.toggleDevTools();
+            }
+          }
+        },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -204,47 +208,164 @@ function createMenu() {
 // =====================================================
 function startBackendServer() {
   return new Promise((resolve, reject) => {
+    const isWin = process.platform === 'win32';
     let backendPath;
+
     if (app.isPackaged) {
       backendPath = path.join(process.resourcesPath, 'backend', 'src', 'server.js');
     } else {
       backendPath = path.join(__dirname, '..', '..', 'backend', 'src', 'server.js');
     }
 
-    console.log('Starting backend server from:', backendPath);
+    const backendDir = path.dirname(backendPath);
+    console.log('[BACKEND] Platform:', process.platform);
+    console.log('[BACKEND] App packaged:', app.isPackaged);
+    console.log('[BACKEND] Electron path:', process.execPath);
+    console.log('[BACKEND] Starting backend server from:', backendPath);
+    console.log('[BACKEND] Working directory:', backendDir);
 
-    backendProcess = fork(backendPath, [], {
-      cwd: path.dirname(backendPath),
-      env: {
+    // Check if backend file exists
+    const fs = require('fs');
+    if (!fs.existsSync(backendPath)) {
+      const errMsg = `Backend file not found: ${backendPath}`;
+      console.error('[BACKEND]', errMsg);
+      dialog.showErrorBox('Backend Error', errMsg);
+      reject(new Error(errMsg));
+      return;
+    }
+    console.log('[BACKEND] Backend file exists: true');
+
+    // Use spawn with ELECTRON_RUN_AS_NODE for packaged apps
+    // This makes Electron run as a Node.js instance
+    const { spawn } = require('child_process');
+
+    try {
+      const env = {
         ...process.env,
         NODE_ENV: 'production',
         PORT: '3001'
-      },
-      silent: true
-    });
+      };
 
-    backendProcess.stdout?.on('data', (data) => {
-      console.log('[Backend]:', data.toString());
-    });
+      // In packaged apps, use ELECTRON_RUN_AS_NODE to run Electron as Node
+      if (app.isPackaged) {
+        env.ELECTRON_RUN_AS_NODE = '1';
+      }
 
-    backendProcess.stderr?.on('data', (data) => {
-      console.error('[Backend Error]:', data.toString());
-    });
+      console.log('[BACKEND] Spawning with ELECTRON_RUN_AS_NODE:', env.ELECTRON_RUN_AS_NODE);
 
-    backendProcess.on('error', (err) => {
-      console.error('Failed to start backend:', err);
+      backendProcess = spawn(process.execPath, [backendPath], {
+        cwd: backendDir,
+        env: env,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let startupOutput = '';
+      let hasError = false;
+
+      backendProcess.stdout?.on('data', (data) => {
+        const msg = data.toString();
+        startupOutput += msg;
+        console.log('[Backend]:', msg.trim());
+      });
+
+      backendProcess.stderr?.on('data', (data) => {
+        const msg = data.toString();
+        startupOutput += msg;
+        console.error('[Backend Error]:', msg.trim());
+        // Check for common errors
+        if (msg.includes('Cannot find module') || msg.includes('ERR_MODULE_NOT_FOUND')) {
+          hasError = true;
+        }
+      });
+
+      backendProcess.on('error', (err) => {
+        console.error('[BACKEND] Spawn error:', err);
+        dialog.showErrorBox('Backend Failed to Start',
+          `Could not start the backend server:\n\n${err.message}\n\nPath: ${backendPath}`
+        );
+        reject(err);
+      });
+
+      backendProcess.on('exit', (code, signal) => {
+        console.log('[BACKEND] Process exited with code:', code, 'signal:', signal);
+        if (code !== 0 && code !== null) {
+          console.error('[BACKEND] Startup output:', startupOutput);
+          if (!hasError) {
+            dialog.showMessageBox({
+              type: 'error',
+              title: 'Backend Crashed',
+              message: `Backend server exited with code: ${code}`,
+              detail: startupOutput.slice(-500), // Last 500 chars
+              buttons: ['OK']
+            });
+          }
+        }
+        backendProcess = null;
+      });
+
+      // Health check - actually verify the server is responding
+      const checkBackendHealth = async (attempts = 0) => {
+        const maxAttempts = 15; // More attempts for slower Windows startup
+        const http = require('http');
+
+        return new Promise((resolveHealth) => {
+          const req = http.get('http://localhost:3001/api/system/health', (res) => {
+            console.log('[BACKEND] Health check passed, status:', res.statusCode);
+            resolveHealth(true);
+          });
+
+          req.on('error', (err) => {
+            if (attempts < maxAttempts) {
+              console.log(`[BACKEND] Health check attempt ${attempts + 1}/${maxAttempts} failed, retrying...`);
+              setTimeout(() => {
+                checkBackendHealth(attempts + 1).then(resolveHealth);
+              }, 500);
+            } else {
+              console.error('[BACKEND] Health check failed after', maxAttempts, 'attempts');
+              console.error('[BACKEND] Last error:', err.message);
+              resolveHealth(false);
+            }
+          });
+
+          req.setTimeout(2000, () => {
+            req.destroy();
+          });
+        });
+      };
+
+      // Wait a bit then do health check
+      setTimeout(async () => {
+        const healthy = await checkBackendHealth();
+        if (healthy) {
+          console.log('[BACKEND] Server started successfully and responding');
+          resolve();
+        } else {
+          console.error('[BACKEND] Server did not respond to health checks');
+          console.error('[BACKEND] Startup output was:', startupOutput);
+          // Only show warning if we don't see successful initialization
+          const dbInitialized = startupOutput.includes('Database initialized successfully') ||
+            startupOutput.includes('Database schema initialized');
+          if (!dbInitialized) {
+            // Show dialog with startup output for debugging
+            dialog.showMessageBox({
+              type: 'warning',
+              title: 'Backend Warning',
+              message: 'Backend server may not have started correctly',
+              detail: `Features requiring the backend may not work.\n\nStartup output:\n${startupOutput.slice(-800)}`,
+              buttons: ['OK']
+            });
+          } else {
+            console.log('[BACKEND] DB initialized successfully - skipping warning dialog');
+          }
+          resolve(); // Still resolve so app continues
+        }
+      }, 2000); // Wait 2 seconds before first health check
+
+    } catch (err) {
+      console.error('[BACKEND] Exception during startup:', err);
+      dialog.showErrorBox('Backend Error', `Failed to start backend:\n\n${err.message}`);
       reject(err);
-    });
-
-    backendProcess.on('exit', (code) => {
-      console.log('Backend process exited with code:', code);
-      backendProcess = null;
-    });
-
-    setTimeout(() => {
-      console.log('Backend server should be ready');
-      resolve();
-    }, 2000);
+    }
   });
 }
 

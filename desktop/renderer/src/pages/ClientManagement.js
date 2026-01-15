@@ -26,6 +26,7 @@ import {
     EyeOff
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
+import { useClientContext } from '../contexts/ClientContext';
 import './ClientManagement.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
@@ -106,6 +107,7 @@ const DEMO_USAGE = {
 
 function ClientManagement() {
     const { isDemoMode } = useDemoMode();
+    const { selectedClient: globalSelectedClient, clearClient: clearGlobalClient } = useClientContext();
 
     // State
     const [clients, setClients] = useState([]);
@@ -263,6 +265,12 @@ function ClientManagement() {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             setClients(prev => prev.filter(c => c.id !== clientId));
+
+            // If the deleted client was the globally selected one, clear it
+            if (globalSelectedClient?.id === clientId) {
+                console.log('[ClientManagement] Deleted selected client, clearing global selection');
+                clearGlobalClient();
+            }
         } catch (err) {
             console.error('Delete client error:', err);
         }

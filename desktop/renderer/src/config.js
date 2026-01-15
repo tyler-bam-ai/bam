@@ -25,6 +25,24 @@ export const WS_URL = isDevelopment || isElectron
     ? 'ws://localhost:3001'
     : (process.env.REACT_APP_WS_URL || 'wss://api.bam.ai');
 
+// Retry fetch helper - retries on network errors (useful when backend is starting)
+export const retryFetch = async (url, options = {}, maxRetries = 3, delayMs = 1000) => {
+    let lastError;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await fetch(url, options);
+            return response;
+        } catch (err) {
+            lastError = err;
+            console.log(`[RETRY] Fetch attempt ${attempt}/${maxRetries} failed:`, err.message);
+            if (attempt < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+        }
+    }
+    throw lastError;
+};
+
 // Feature Flags
 export const FEATURES = {
     voiceMode: true,
@@ -37,7 +55,8 @@ export const FEATURES = {
 export const ENV = {
     isDevelopment,
     isProduction: !isDevelopment,
-    version: '1.0.0',
+    isElectron,
+    version: '1.0.9',
 };
 
 export default {
@@ -45,4 +64,5 @@ export default {
     WS_URL,
     FEATURES,
     ENV,
+    retryFetch,
 };

@@ -213,6 +213,59 @@ router.post('/from-onboarding', (req, res) => {
 });
 
 /**
+ * Append transcript to existing client's knowledge base
+ * POST /api/clients/:id/transcript
+ * Used by Onboarding "Upload Transcript" and Brain Training
+ */
+router.post('/:id/transcript', (req, res) => {
+    try {
+        const { id } = req.params;
+        const { transcript, title, source } = req.body;
+
+        if (!transcript || !transcript.trim()) {
+            return res.status(400).json({ error: 'Transcript text is required' });
+        }
+
+        const client = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+        if (!client) {
+            return res.status(404).json({ error: 'Client not found' });
+        }
+
+        const transcriptId = uuidv4();
+        const transcriptMetadata = JSON.stringify({
+            source: source || 'uploaded_transcript',
+            wordCount: transcript.split(/\s+/).length,
+            uploadedAt: new Date().toISOString()
+        });
+
+        db.prepare(`
+            INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            transcriptId,
+            id,
+            'transcript',
+            title || `${client.name} - Uploaded Transcript`,
+            transcript,
+            'ready',
+            transcriptMetadata
+        );
+
+        console.log(`[TRANSCRIPT] Added transcript to client ${client.name}: ${transcriptId}`);
+
+        res.json({
+            success: true,
+            message: 'Transcript added to knowledge base',
+            transcriptId,
+            wordCount: transcript.split(/\s+/).length
+        });
+    } catch (error) {
+        console.error('Add transcript error:', error);
+        res.status(500).json({ error: 'Failed to add transcript' });
+    }
+});
+
+/**
  * Get onboarding data for a client (used by BAM Brains)
  * GET /api/clients/:id/onboarding
  */

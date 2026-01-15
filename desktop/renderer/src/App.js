@@ -7,6 +7,7 @@ import AppShell from './components/AppShell';
 
 // Pages
 import Login from './pages/Login';
+import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import KnowledgeProvider from './pages/KnowledgeProvider';
 import KnowledgeConsumer from './pages/KnowledgeConsumer';
@@ -46,6 +47,7 @@ function App() {
     return (
         <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
 
             <Route path="/" element={
                 <ProtectedRoute>

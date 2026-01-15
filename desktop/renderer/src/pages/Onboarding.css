@@ -1487,12 +1487,19 @@
 /* Enhanced Success Button */
 .btn-success {
     background: linear-gradient(135deg, var(--color-success) 0%, #34d399 100%) !important;
-    color: white;
+    color: white !important;
     border: none;
     box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
 }
 
 .btn-success:hover {
     background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%) !important;
+    color: white !important;
     box-shadow: 0 6px 16px rgba(34, 197, 94, 0.4);
+}
+
+.btn-success:disabled {
+    background: linear-gradient(135deg, var(--color-success) 0%, #34d399 100%) !important;
+    color: white !important;
+    opacity: 0.8;
 }

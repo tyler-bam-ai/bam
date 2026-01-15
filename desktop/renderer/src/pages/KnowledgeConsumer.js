@@ -35,7 +35,8 @@ import {
     Search,
     Pin,
     Trash2,
-    ChevronRight
+    ChevronRight,
+    Square
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
 import './KnowledgeConsumer.css';
@@ -298,8 +299,9 @@ function BrainChat({ brainId }) {
     const navigate = useNavigate();
     const brain = BRAIN_CONFIG[brainId];
 
-    // Storage key for this brain's conversations
-    const storageKey = `bam_brain_${brainId}_conversations`;
+    // Storage key includes clientId so each client has separate conversations
+    const clientId = selectedClient?.id || 'default';
+    const storageKey = `bam_brain_${brainId}_${clientId}_conversations`;
 
     const [conversations, setConversations] = useState([]);
     const [activeConversation, setActiveConversation] = useState(null);
@@ -312,6 +314,8 @@ function BrainChat({ brainId }) {
     const [autoSwitchBanner, setAutoSwitchBanner] = useState(null);
     const messagesEndRef = useRef(null);
     const hasLoadedRef = useRef(false);
+    const prevClientIdRef = useRef(clientId);
+    const abortControllerRef = useRef(null);
 
     // Load saved conversations on mount OR demo data
     useEffect(() => {
@@ -355,7 +359,48 @@ function BrainChat({ brainId }) {
             }
             hasLoadedRef.current = true;
         }
-    }, [isDemoMode, brainId]);
+    }, [isDemoMode, brainId, clientId]);
+
+    // Clear and reload when client changes
+    useEffect(() => {
+        if (prevClientIdRef.current !== clientId) {
+            console.log(`[BRAIN] Client changed from ${prevClientIdRef.current} to ${clientId} - clearing chat`);
+            prevClientIdRef.current = clientId;
+            hasLoadedRef.current = false;
+
+            // Load the new client's conversations from localStorage
+            const saved = localStorage.getItem(storageKey);
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    setConversations(parsed.conversations || []);
+                    if (parsed.activeId && parsed.conversations) {
+                        const active = parsed.conversations.find(c => c.id === parsed.activeId);
+                        if (active) {
+                            setActiveConversation(active);
+                            setMessages(active.messages || []);
+                        } else {
+                            startNewConversation();
+                        }
+                    } else if (parsed.conversations?.length > 0) {
+                        setActiveConversation(parsed.conversations[0]);
+                        setMessages(parsed.conversations[0].messages || []);
+                    } else {
+                        startNewConversation();
+                    }
+                } catch (e) {
+                    startNewConversation();
+                }
+            } else {
+                // No saved conversations for this client - start fresh
+                setConversations([]);
+                setActiveConversation(null);
+                setMessages([]);
+                startNewConversation();
+            }
+            hasLoadedRef.current = true;
+        }
+    }, [clientId, storageKey]);
 
     // Save conversations to localStorage whenever they change
     useEffect(() => {
@@ -457,7 +502,7 @@ function BrainChat({ brainId }) {
             ));
         }
 
-        // Call real chat API
+        // Call real chat API with streaming
         try {
             const token = localStorage.getItem('token');
             // Get OpenAI API key for GPT-4o brain responses
@@ -466,7 +511,21 @@ function BrainChat({ brainId }) {
                 openaiKey = await window.electronAPI.apiKeys.get('openai');
             }
 
-            const response = await fetch('http://localhost:3001/api/chat/completions', {
+            // Create placeholder assistant message for streaming
+            const assistantMessageId = Date.now();
+            const assistantMessage = {
+                id: assistantMessageId,
+                role: 'assistant',
+                content: '',
+                timestamp: new Date().toISOString(),
+                isStreaming: true
+            };
+            setMessages(prev => [...prev, assistantMessage]);
+
+            // Create abort controller for stop button
+            abortControllerRef.current = new AbortController();
+
+            const response = await fetch(`${API_URL}/api/chat/completions/stream`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -478,41 +537,77 @@ function BrainChat({ brainId }) {
                     conversationId: activeConversation?.id,
                     brainType: brainId,
                     clientId: selectedClient?.id || undefined
-                })
+                }),
+                signal: abortControllerRef.current.signal
             });
 
             if (response.ok) {
-                const data = await response.json();
-                const assistantMessage = {
-                    id: Date.now(),
-                    role: 'assistant',
-                    content: data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.',
-                    timestamp: new Date().toISOString(),
-                    metadata: data.metadata
-                };
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullContent = '';
 
-                setMessages(prev => [...prev, assistantMessage]);
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
 
-                // Update conversation
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n').filter(line => line.trim());
+
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                if (data === '[DONE]') {
+                                    // Streaming complete
+                                    setMessages(prev => prev.map(m =>
+                                        m.id === assistantMessageId
+                                            ? { ...m, isStreaming: false }
+                                            : m
+                                    ));
+                                } else {
+                                    try {
+                                        const parsed = JSON.parse(data);
+                                        if (parsed.content) {
+                                            fullContent += parsed.content;
+                                            // Update the assistant message with new content
+                                            setMessages(prev => prev.map(m =>
+                                                m.id === assistantMessageId
+                                                    ? { ...m, content: fullContent }
+                                                    : m
+                                            ));
+                                        }
+                                        if (parsed.error) {
+                                            console.error('Stream error:', parsed.error);
+                                            setMessages(prev => prev.map(m =>
+                                                m.id === assistantMessageId
+                                                    ? { ...m, content: 'Error: ' + parsed.error, isStreaming: false }
+                                                    : m
+                                            ));
+                                        }
+                                    } catch (e) {
+                                        // Ignore parse errors
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (streamError) {
+                    console.error('Stream read error:', streamError);
+                }
+
+                // Update conversation with final message
                 setConversations(prev => prev.map(c =>
                     c.id === activeConversation?.id
-                        ? { ...c, lastMessage: assistantMessage.content.slice(0, 50), messages: [...(c.messages || []), userMessage, assistantMessage] }
+                        ? { ...c, lastMessage: fullContent.slice(0, 50), messages: [...(c.messages || []), userMessage, { ...assistantMessage, content: fullContent, isStreaming: false }] }
                         : c
                 ));
             } else {
                 // Fallback to demo response if API fails
                 const responses = getBrainResponse(brainId, input);
-                const assistantMessage = {
-                    id: Date.now(),
-                    role: 'assistant',
-                    content: responses[Math.floor(Math.random() * responses.length)],
-                    timestamp: new Date().toISOString()
-                };
-                setMessages(prev => [...prev, assistantMessage]);
-                setConversations(prev => prev.map(c =>
-                    c.id === activeConversation?.id
-                        ? { ...c, lastMessage: assistantMessage.content.slice(0, 50), messages: [...(c.messages || []), userMessage, assistantMessage] }
-                        : c
+                setMessages(prev => prev.map(m =>
+                    m.id === assistantMessageId
+                        ? { ...m, content: responses[Math.floor(Math.random() * responses.length)], isStreaming: false }
+                        : m
                 ));
             }
         } catch (error) {
@@ -533,6 +628,20 @@ function BrainChat({ brainId }) {
             ));
         }
 
+        setIsLoading(false);
+        abortControllerRef.current = null;
+    };
+
+    // Stop generation mid-stream
+    const stopGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        // Mark any streaming messages as stopped
+        setMessages(prev => prev.map(m =>
+            m.isStreaming ? { ...m, isStreaming: false, content: m.content || '(Generation stopped)' } : m
+        ));
         setIsLoading(false);
     };
 
@@ -786,9 +895,15 @@ function BrainChat({ brainId }) {
                                 }}
                                 rows={1}
                             />
-                            <button type="submit" className="btn btn-primary btn-icon send-btn" disabled={!input.trim() || isLoading}>
-                                {isLoading ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
-                            </button>
+                            {isLoading ? (
+                                <button type="button" className="btn btn-danger btn-icon send-btn" onClick={stopGeneration} title="Stop generating">
+                                    <Square size={18} />
+                                </button>
+                            ) : (
+                                <button type="submit" className="btn btn-primary btn-icon send-btn" disabled={!input.trim()}>
+                                    <Send size={18} />
+                                </button>
+                            )}
                         </div>
                     </form>
                 ) : (
@@ -898,10 +1013,10 @@ function KnowledgeConsumer() {
             {/* Brain Content */}
             <div className="brain-content">
                 <Routes>
-                    <Route index element={<BrainChat brainId="operations" />} />
-                    <Route path="employee" element={<BrainChat brainId="employee" />} />
-                    <Route path="branding" element={<BrainChat brainId="branding" />} />
-                    <Route path="support" element={<BrainChat brainId="support" />} />
+                    <Route index element={<BrainChat key="operations" brainId="operations" />} />
+                    <Route path="employee" element={<BrainChat key="employee" brainId="employee" />} />
+                    <Route path="branding" element={<BrainChat key="branding" brainId="branding" />} />
+                    <Route path="support" element={<BrainChat key="support" brainId="support" />} />
                 </Routes>
             </div>
         </div>

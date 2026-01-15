@@ -112,10 +112,14 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
             if (fs.existsSync(tempWebm)) fs.unlinkSync(tempWebm);
             if (fs.existsSync(tempMp3)) fs.unlinkSync(tempMp3);
             console.error('[WHISPER] API ERROR:', whisperError.message);
+            console.error('[WHISPER] Full error:', JSON.stringify(whisperError, null, 2));
             throw whisperError;
         }
     } catch (error) {
         console.error('Transcription error:', error);
+        console.error('Error type:', error.constructor.name);
+        console.error('Error status:', error.status);
+        console.error('Error code:', error.code);
 
         if (error.message.includes('API key')) {
             return res.status(503).json({
@@ -124,9 +128,27 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
             });
         }
 
+        // Surface detailed OpenAI errors
+        let errorMessage = error.message || 'Unknown error';
+        let errorCode = error.code || error.status || 500;
+
+        // Check for common OpenAI errors
+        if (error.status === 401 || errorMessage.includes('Incorrect API key')) {
+            errorMessage = 'Invalid OpenAI API key. Please check your key in Settings.';
+            errorCode = 401;
+        } else if (error.status === 429 || errorMessage.includes('Rate limit')) {
+            errorMessage = 'OpenAI rate limit exceeded. Please wait and try again.';
+            errorCode = 429;
+        } else if (error.status === 402 || errorMessage.includes('insufficient_quota')) {
+            errorMessage = 'OpenAI account has no credits. Please add billing to your OpenAI account.';
+            errorCode = 402;
+        }
+
         res.status(500).json({
             error: 'Transcription failed',
-            details: error.message,
+            details: errorMessage,
+            openaiError: error.error || null,
+            code: errorCode,
             text: ''
         });
     }

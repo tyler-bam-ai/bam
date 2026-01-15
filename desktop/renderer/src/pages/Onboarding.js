@@ -26,7 +26,8 @@ import {
     Target
 } from 'lucide-react';
 import logger from '../utils/onboardingLogger';
-import { API_URL } from '../config';
+import { API_URL, retryFetch } from '../config';
+import { useToast } from '../contexts/ToastContext';
 import './Onboarding.css';
 
 // Industry-specific question additions
@@ -236,6 +237,7 @@ const AUTOSAVE_INTERVAL = 10000; // 10 seconds
 
 function Onboarding() {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const [currentStep, setCurrentStep] = useState(0);
     const [saving, setSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState(null);
@@ -422,7 +424,7 @@ function Onboarding() {
     // Export client profile to downloadable PDF (HTML-based)
     const exportClientPDF = () => {
         if (!sessionData.companyName) {
-            alert('Please enter a company name first.');
+            showToast('Please enter a company name first.', 'warning', 3000);
             return;
         }
 
@@ -590,13 +592,13 @@ function Onboarding() {
             });
 
             if (response.ok) {
-                alert('Successfully pushed to Salesforce!');
+                showToast('Successfully pushed to Salesforce!', 'success', 3000);
             } else {
-                alert('Salesforce push requires SALESFORCE_API_KEY to be configured in backend.');
+                showToast('Salesforce push requires SALESFORCE_API_KEY to be configured in backend.', 'warning', 4000);
             }
         } catch (error) {
             console.error('Salesforce push error:', error);
-            alert('Could not connect to Salesforce. Please check your API configuration.');
+            showToast('Could not connect to Salesforce. Please check your API configuration.', 'error', 4000);
         }
         setSaving(false);
     };
@@ -636,42 +638,66 @@ function Onboarding() {
     // Get OpenAI API key from Settings (electron-store) or localStorage fallback
     const [openaiApiKey, setOpenaiApiKey] = useState('');
 
-    // Load API key from Settings on mount
+    // Function to load API key - made reusable so we can call it when settings change
+    const loadApiKey = async () => {
+        logger.info('INIT', '=== LOADING API KEY ===');
+        let key = null;
+
+        // Try electron-store first (Electron app)
+        if (window.electronAPI?.apiKeys?.get) {
+            logger.info('INIT', 'Trying electron-store...');
+            try {
+                key = await window.electronAPI.apiKeys.get('openai');
+                logger.info('INIT', 'electron-store result', { found: !!key, prefix: key?.substring(0, 10) });
+            } catch (err) {
+                logger.error('INIT', 'electron-store error', { error: err.message });
+            }
+        } else {
+            logger.warn('INIT', 'window.electronAPI.apiKeys.get not available');
+        }
+
+        // Fallback to localStorage (browser/web mode)
+        if (!key) {
+            logger.info('INIT', 'Trying localStorage fallback...');
+            key = localStorage.getItem('openai_api_key');
+            logger.info('INIT', 'localStorage result', { found: !!key });
+        }
+
+        if (key) {
+            setOpenaiApiKey(key);
+            setApiKeyError(false);
+            logger.success('INIT', 'OpenAI API key loaded', { prefix: key.substring(0, 10) });
+        } else {
+            setApiKeyError(true);
+            logger.error('INIT', 'NO API KEY FOUND - Transcription will not work!');
+        }
+    };
+
+    // Load API key on mount
     useEffect(() => {
-        const loadApiKey = async () => {
-            logger.info('INIT', '=== LOADING API KEY ===');
-            let key = null;
+        loadApiKey();
+    }, []);
 
-            // Try electron-store first (Electron app)
-            if (window.electronAPI?.apiKeys?.get) {
-                logger.info('INIT', 'Trying electron-store...');
-                try {
-                    key = await window.electronAPI.apiKeys.get('openai');
-                    logger.info('INIT', 'electron-store result', { found: !!key, prefix: key?.substring(0, 10) });
-                } catch (err) {
-                    logger.error('INIT', 'electron-store error', { error: err.message });
-                }
-            } else {
-                logger.warn('INIT', 'window.electronAPI.apiKeys.get not available');
-            }
-
-            // Fallback to localStorage (browser/web mode)
-            if (!key) {
-                logger.info('INIT', 'Trying localStorage fallback...');
-                key = localStorage.getItem('openai_api_key');
-                logger.info('INIT', 'localStorage result', { found: !!key });
-            }
-
-            if (key) {
-                setOpenaiApiKey(key);
-                setApiKeyError(false);
-                logger.success('INIT', 'OpenAI API key loaded', { prefix: key.substring(0, 10) });
-            } else {
-                setApiKeyError(true);
-                logger.error('INIT', 'NO API KEY FOUND - Transcription will not work!');
+    // Listen for localStorage changes (when key is saved in Settings)
+    useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === 'openai_api_key') {
+                logger.info('INIT', 'API key changed in storage, reloading...');
+                loadApiKey();
             }
         };
-        loadApiKey();
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
+
+    // Reload API key when window gains focus (in case user saved in Settings)
+    useEffect(() => {
+        const handleFocus = () => {
+            logger.info('INIT', 'Window focused, checking for API key changes...');
+            loadApiKey();
+        };
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
     }, []);
 
     // Get ALL questions from all sections for smart routing
@@ -793,9 +819,25 @@ function Onboarding() {
             const headers = {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
             };
-            // Include API key from Settings
-            if (openaiApiKey) {
-                headers['x-openai-key'] = openaiApiKey;
+            // PREFER localStorage key (most recently saved) over state (may have old cached key)
+            const stateKey = openaiApiKey;
+            const localStorageKey = localStorage.getItem('openai_api_key');
+            // Use localStorage first - it's always updated when user saves in Settings
+            const apiKeyToUse = localStorageKey || stateKey;
+
+            console.log('=== API KEY DEBUG ===');
+            console.log('State key present:', !!stateKey, stateKey ? `(${stateKey.substring(0, 10)}...)` : '');
+            console.log('localStorage key present:', !!localStorageKey, localStorageKey ? `(${localStorageKey.substring(0, 10)}...)` : '');
+            console.log('Using key:', apiKeyToUse ? `${apiKeyToUse.substring(0, 10)}...` : 'NONE');
+            console.log('Preferred source: localStorage');
+            console.log('=====================');
+
+            if (apiKeyToUse) {
+                headers['x-openai-key'] = apiKeyToUse;
+                logger.info('WHISPER', 'Using API key from:', stateKey ? 'state' : 'localStorage');
+            } else {
+                console.error('❌ NO API KEY FOUND - Transcription will fail with 503!');
+                logger.warn('WHISPER', 'No API key found in state or localStorage');
             }
 
             // Add 60-second timeout to prevent hanging
@@ -803,12 +845,12 @@ function Onboarding() {
             const timeoutId = setTimeout(() => controller.abort(), 60000);
 
             logger.info('WHISPER', 'Calling /api/transcription/transcribe...');
-            const response = await fetch(`${API_URL}/api/transcription/transcribe`, {
+            const response = await retryFetch(`${API_URL}/api/transcription/transcribe`, {
                 method: 'POST',
                 headers,
                 body: formData,
                 signal: controller.signal
-            });
+            }, 3, 2000); // Retry 3 times with 2-second delay
             clearTimeout(timeoutId);
 
             if (response.ok) {
@@ -818,7 +860,10 @@ function Onboarding() {
             } else {
                 const errorData = await response.json().catch(() => ({}));
                 logger.error('WHISPER', 'API returned error', { status: response.status, error: errorData });
-                setDebugMessage(`❌ Transcription error: ${response.status}`);
+                // Show detailed error message
+                const detailMsg = errorData.details || errorData.error || `Status ${response.status}`;
+                console.error('OpenAI Error Details:', errorData);
+                setDebugMessage(`❌ ${detailMsg}`);
                 return '';
             }
         } catch (error) {
@@ -998,14 +1043,9 @@ function Onboarding() {
             setDebugMessage('ERROR: No API key configured!');
             logger.error('AUDIO', 'No OpenAI API key configured!');
             setApiKeyError(true);
-            const goToSettings = window.confirm(
-                'OpenAI API key not configured!\n\n' +
-                'To use voice auto-fill, you need to add your OpenAI API key in Settings.\n\n' +
-                'Click OK to go to Settings, or Cancel to stay here.'
-            );
-            if (goToSettings) {
-                navigate('/settings');
-            }
+            // Use toast instead of confirm - confirm steals focus on Windows
+            showToast('OpenAI API key required! Redirecting to Settings...', 'warning', 3000);
+            setTimeout(() => navigate('/settings'), 1500);
             return;
         }
 
@@ -1064,7 +1104,7 @@ function Onboarding() {
         } catch (error) {
             logger.error('AUDIO', 'Failed to start:', error.message);
             setDebugMessage('❌ Error: ' + error.message);
-            alert('Failed to start recording: ' + error.message);
+            showToast('Failed to start recording: ' + error.message, 'error', 4000);
         }
     };
 
@@ -1088,6 +1128,10 @@ function Onboarding() {
     const stopRecording = async () => {
         if (mediaRecorderRef.current || isRecording) {
             isRecordingRef.current = false;
+
+            // IMMEDIATELY update UI so counter stops and buttons change
+            setIsRecording(false);
+            setIsPaused(false);
 
             const { mimeType, stopPromise } = recordingLoopRef.current || {};
 
@@ -1225,22 +1269,34 @@ function Onboarding() {
         if (isRecordingRef.current || isRecording || mediaRecorderRef.current) {
             console.log('[SAVE] Recording detected - stopping and transcribing...');
             setDebugMessage('⏳ Stopping recording and transcribing...');
-            await stopRecording(); // MUST await - stopRecording does transcription
-            console.log('[SAVE] stopRecording completed');
+            try {
+                await stopRecording(); // MUST await - stopRecording does transcription
+                console.log('[SAVE] stopRecording completed');
+            } catch (err) {
+                console.error('[SAVE] stopRecording failed:', err);
+                setDebugMessage('⚠️ Transcription failed, saving without transcript...');
+            }
         }
 
         // If transcription is in progress (even if recording already stopped), wait for it
         if (isTranscribingRef.current && transcriptionPromiseRef.current) {
             console.log('[SAVE] Transcription in progress - waiting...');
             setDebugMessage('⏳ Waiting for transcription to complete...');
-            await transcriptionPromiseRef.current;
-            console.log('[SAVE] Transcription promise resolved');
+            try {
+                await Promise.race([
+                    transcriptionPromiseRef.current,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Transcription timeout')), 15000))
+                ]);
+                console.log('[SAVE] Transcription promise resolved');
+            } catch (err) {
+                console.log('[SAVE] Transcription wait failed:', err.message);
+                setDebugMessage('⚠️ Transcription timed out, saving anyway...');
+            }
         }
 
-        // BULLETPROOF: Poll until transcript is populated or timeout (max 30 seconds)
-        // This handles any edge cases where refs don't catch the transcription
+        // Quick poll for transcript (max 5 seconds instead of 30)
         let waitCount = 0;
-        const maxWait = 60; // 60 * 500ms = 30 seconds
+        const maxWait = 10; // 10 * 500ms = 5 seconds
         while (!fullTranscriptRef.current && waitCount < maxWait) {
             // Check if there might be transcription happening
             if (isTranscribingRef.current || audioChunksRef.current?.length > 0) {
@@ -1279,13 +1335,13 @@ function Onboarding() {
         console.log('[SAVE] Payload transcript length:', payload.transcript.length);
 
         try {
-            const response = await fetch(`${API_URL}/api/clients/from-onboarding`, {
+            const response = await retryFetch(`${API_URL}/api/clients/from-onboarding`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload)
-            });
+            }, 3, 2000); // Retry 3 times with 2-second delay
 
             const data = await response.json();
 
@@ -1293,7 +1349,9 @@ function Onboarding() {
                 setClientSaved(true);
                 const transcriptMsg = data.hasTranscript ? ' (with transcript)' : '';
                 setDebugMessage(`✅ Client "${sessionData.companyName}" saved to database${transcriptMsg}!`);
-                alert(`🎉 Client "${sessionData.companyName}" has been created successfully!${transcriptMsg}\n\nYou can now find them in the Admin > Clients section.`);
+
+                // Use toast instead of alert - alert blocks focus on Windows
+                showToast(`🎉 Client "${sessionData.companyName}" created successfully!${transcriptMsg}`, 'success', 5000);
 
                 // Clear local autosave since we've saved to DB
                 localStorage.removeItem(AUTOSAVE_KEY);
@@ -1302,10 +1360,17 @@ function Onboarding() {
             }
         } catch (error) {
             console.error('Save client error:', error);
-            alert('Error saving client: ' + error.message);
+            // Use toast instead of alert - alert blocks focus on Windows
+            showToast('Error saving client: ' + error.message, 'error', 5000);
             setDebugMessage('❌ Error saving client: ' + error.message);
         } finally {
             setIsSavingClient(false);
+
+            // CRITICAL: Force focus back to document after save completes
+            // This ensures inputs remain clickable on Windows
+            setTimeout(() => {
+                document.body.focus();
+            }, 100);
         }
     };
 
@@ -1397,22 +1462,63 @@ function Onboarding() {
     };
 
     // Simple add to customer file (no AI processing)
-    const addToCustomerFile = () => {
+    const addToCustomerFile = async () => {
         if (!uploadedTranscript) {
-            alert('No transcript to add.');
+            showToast('No transcript to add.', 'warning', 3000);
             return;
         }
 
-        // Just close modal - transcript is already appended in handleTranscriptUpload
-        setShowTranscriptUpload(false);
-        alert('✅ Transcript added to customer file successfully!');
-        console.log('[TRANSCRIPT] Added to customer file. Total length:', fullTranscriptRef.current?.length || 0);
+        // If client hasn't been saved yet, append to fullTranscriptRef (will be saved on Complete & Save)
+        if (!sessionData.clientId) {
+            // Append to existing transcript
+            const separator = fullTranscriptRef.current ? '\n\n--- Uploaded Transcript ---\n\n' : '';
+            const newTranscript = (fullTranscriptRef.current || '') + separator + uploadedTranscript;
+            fullTranscriptRef.current = newTranscript;
+            setFullTranscript(newTranscript);
+            setShowTranscriptUpload(false);
+            setUploadedTranscript('');
+            showToast('✅ Transcript added! It will be saved when you click Complete & Save.', 'success', 3000);
+            console.log('[TRANSCRIPT] Appended to pending transcript. Total length:', newTranscript.length);
+            return;
+        }
+
+        // Client already saved - call API to add transcript to knowledge base
+        try {
+            const response = await retryFetch(`${API_URL}/api/clients/${sessionData.clientId}/transcript`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    transcript: uploadedTranscript,
+                    title: `${sessionData.companyName} - Uploaded Transcript`,
+                    source: 'onboarding_upload'
+                })
+            }, 3, 2000);
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Also append to fullTranscriptRef for display
+                const separator = fullTranscriptRef.current ? '\n\n--- Uploaded Transcript ---\n\n' : '';
+                fullTranscriptRef.current = (fullTranscriptRef.current || '') + separator + uploadedTranscript;
+                setFullTranscript(fullTranscriptRef.current);
+
+                setShowTranscriptUpload(false);
+                setUploadedTranscript('');
+                showToast(`✅ Transcript added to ${sessionData.companyName}'s knowledge base!`, 'success', 3000);
+                console.log('[TRANSCRIPT] Saved to knowledge base. ID:', data.transcriptId);
+            } else {
+                throw new Error(data.error || 'Failed to save transcript');
+            }
+        } catch (error) {
+            console.error('Add transcript error:', error);
+            showToast('Failed to add transcript: ' + error.message, 'error', 4000);
+        }
     };
 
     // Process transcript with AI
     const processTranscriptWithAI = async () => {
         if (!uploadedTranscript && !liveTranscript) {
-            alert('No transcript available to process.');
+            showToast('No transcript available to process.', 'warning', 3000);
             return;
         }
 
@@ -1445,13 +1551,13 @@ function Onboarding() {
                         responses: { ...prev.responses, ...data.answers }
                     }));
                 }
-                alert('Transcript processed! Answers have been auto-filled. Please review and edit as needed.');
+                showToast('Transcript processed! Answers auto-filled. Please review.', 'success', 4000);
             } else {
-                alert('Could not process transcript. Please check your API configuration.');
+                showToast('Could not process transcript. Please check your API configuration.', 'error', 4000);
             }
         } catch (error) {
             console.error('Error processing transcript:', error);
-            alert('Error processing transcript. Please try again.');
+            showToast('Error processing transcript. Please try again.', 'error', 4000);
         }
 
         setProcessingTranscript(false);
@@ -1509,28 +1615,58 @@ function Onboarding() {
     };
 
     const handleNewSession = () => {
-        if (window.confirm('Start a new onboarding session? This will clear the current session.')) {
-            localStorage.removeItem(AUTOSAVE_KEY);
-            setSessionData({
-                sessionId: `session_${Date.now()}`,
-                createdAt: new Date().toISOString(),
-                lastModified: new Date().toISOString(),
-                companyName: '',
-                contactName: '',
-                contactEmail: '',
-                contactPhone: '',
-                website: '',
-                industry: '',
-                plan: 'professional',
-                seats: 5,
-                responses: {},
-                status: 'draft',
-                brainsCreated: false,
-                brainsTested: { operations: false, employee: false, branding: false }
-            });
-            setCurrentStep(0);
-            setLastSaved(null);
-        }
+        // REMOVED window.confirm() - it steals focus on Windows and breaks input clicking
+        // Just reset the session directly - autosave means nothing is lost anyway
+        localStorage.removeItem(AUTOSAVE_KEY);
+        setSessionData({
+            sessionId: `session_${Date.now()}`,
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+            companyName: '',
+            contactName: '',
+            contactEmail: '',
+            contactPhone: '',
+            website: '',
+            industry: '',
+            plan: 'professional',
+            seats: 5,
+            responses: {},
+            status: 'draft',
+            brainsCreated: false,
+            brainsTested: { operations: false, employee: false, branding: false }
+        });
+        setCurrentStep(0);
+        setLastSaved(null);
+
+        // COMPREHENSIVE STATE RESET - ensure all UI is interactive
+        setClientSaved(false);
+        setIsSavingClient(false);
+        setIsProcessingAnswer(false); // Reset this to unblock inputs
+        setIsRecording(false);
+        setIsPaused(false);
+        setTranscriptionStatus('idle');
+        setDebugMessage('');
+        setFullTranscript('');
+        setLiveTranscript('');
+
+        // Clear refs too
+        fullTranscriptRef.current = '';
+        audioChunksRef.current = [];
+        isRecordingRef.current = false;
+        isTranscribingRef.current = false;
+
+        // CRITICAL: Force focus back to document after any state changes
+        // This ensures inputs are clickable on Windows
+        setTimeout(() => {
+            document.body.focus();
+            // Also try to focus the first input on the page
+            const firstInput = document.querySelector('input:not([disabled]), textarea:not([disabled])');
+            if (firstInput) {
+                firstInput.blur(); // Blur then available to click
+            }
+        }, 100);
+
+        showToast('🔄 New session started!', 'info', 2000);
     };
 
     const allBrainsTested = Object.values(sessionData.brainsTested).every(Boolean);

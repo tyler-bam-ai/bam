@@ -356,7 +356,23 @@ router.post('/completions', optionalAuth, async (req, res) => {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('[CHAT] OpenAI API error:', response.status, errorText);
-                throw new Error(`OpenAI API error: ${response.status}`);
+
+                // Parse and surface the actual error
+                let errorDetails = errorText;
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    errorDetails = errorJson.error?.message || errorJson.message || errorText;
+                    console.error('[CHAT] OpenAI error message:', errorDetails);
+                } catch (e) {
+                    // Keep original errorText
+                }
+
+                // Return detailed error to frontend
+                return res.status(response.status).json({
+                    error: 'OpenAI API error',
+                    details: errorDetails,
+                    status: response.status
+                });
             }
 
             const data = await response.json();
@@ -446,6 +462,156 @@ router.post('/completions', optionalAuth, async (req, res) => {
     } catch (error) {
         console.error('Chat completion error:', error);
         res.status(500).json({ error: 'Failed to generate response' });
+    }
+});
+
+// Streaming chat completion endpoint with SSE
+router.post('/completions/stream', optionalAuth, async (req, res) => {
+    try {
+        const { messages, conversationId, brainType, clientId } = req.body;
+        const userId = req.user?.id || 'anonymous';
+        const companyId = req.user?.companyId || clientId || 'default';
+
+        if (!messages || !Array.isArray(messages)) {
+            return res.status(400).json({ error: 'Messages array is required' });
+        }
+
+        // Set up SSE headers
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.flushHeaders();
+
+        // Get or create conversation in database
+        let conversation = null;
+        if (userId !== 'anonymous' && conversationId) {
+            conversation = getOrCreateConversation(conversationId, userId, companyId, brainType);
+        }
+
+        // Query knowledge base
+        const userQuery = messages[messages.length - 1]?.content || '';
+        const knowledgeResult = await queryKnowledgeBase(null, userQuery);
+
+        // Build context message
+        let contextMessage = '';
+        if (knowledgeResult.found && knowledgeResult.documents.length > 0) {
+            contextMessage = `## KNOWLEDGE BASE CONTEXT\n\n`;
+            knowledgeResult.documents.forEach((doc, i) => {
+                contextMessage += `### Source ${i + 1}: "${doc.title}"\n${doc.content}\n\n`;
+            });
+        }
+
+        // Get brain-specific prompt
+        const brainPrompt = brainType && BRAIN_SYSTEM_PROMPTS[brainType]
+            ? BRAIN_SYSTEM_PROMPTS[brainType]
+            : SYSTEM_PROMPT;
+
+        // Load client context
+        const clientContext = clientId ? getClientOnboardingContext(clientId) : null;
+
+        const apiMessages = [
+            { role: 'system', content: brainPrompt },
+            ...(clientContext ? [{ role: 'system', content: clientContext }] : []),
+            ...(contextMessage ? [{ role: 'system', content: contextMessage }] : []),
+            ...messages
+        ];
+
+        // Get API key
+        const openaiKey = req.headers['x-openai-key'] || getApiKey('openai');
+
+        if (!openaiKey) {
+            // Fallback to mock streaming for development
+            const mockResponse = generateMockResponse(userQuery, knowledgeResult);
+            const words = mockResponse.split(' ');
+
+            for (const word of words) {
+                res.write(`data: ${JSON.stringify({ content: word + ' ' })}\n\n`);
+                await new Promise(r => setTimeout(r, 50));
+            }
+            res.write(`data: [DONE]\n\n`);
+            res.end();
+            return;
+        }
+
+        // Call OpenAI with streaming enabled
+        console.log(`[STREAM] Starting streaming response for ${brainType || 'general'} brain`);
+
+        const response = await fetch(OPENAI_API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${openaiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-5.2',
+                messages: apiMessages,
+                max_completion_tokens: 2000,
+                temperature: 0.7,
+                stream: true
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[STREAM] OpenAI API error:', response.status, errorText);
+            res.write(`data: ${JSON.stringify({ error: errorText })}\n\n`);
+            res.end();
+            return;
+        }
+
+        // Stream the response
+        let fullContent = '';
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n').filter(line => line.trim());
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6);
+                        if (data === '[DONE]') {
+                            res.write(`data: [DONE]\n\n`);
+                        } else {
+                            try {
+                                const parsed = JSON.parse(data);
+                                const content = parsed.choices?.[0]?.delta?.content;
+                                if (content) {
+                                    fullContent += content;
+                                    res.write(`data: ${JSON.stringify({ content })}\n\n`);
+                                }
+                            } catch (e) {
+                                // Ignore parse errors for incomplete chunks
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (streamError) {
+            console.error('[STREAM] Error reading stream:', streamError);
+        }
+
+        // Store the complete message in database
+        if (conversation && fullContent) {
+            const userMessage = messages[messages.length - 1];
+            if (userMessage) {
+                storeMessage(conversation.id, 'user', userMessage.content);
+            }
+            storeMessage(conversation.id, 'assistant', fullContent);
+        }
+
+        console.log(`[STREAM] Completed streaming, total length: ${fullContent.length}`);
+        res.end();
+    } catch (error) {
+        console.error('Stream completion error:', error);
+        res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+        res.end();
     }
 });
 

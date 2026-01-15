@@ -32,8 +32,8 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ error: 'Email and password are required' });
         }
 
-        // Query user from database
-        const user = db.prepare(`
+        // Query user from database (await for PostgreSQL compatibility)
+        const user = await db.prepare(`
             SELECT u.*, c.name as company_name 
             FROM users u 
             LEFT JOIN companies c ON u.company_id = c.id 
@@ -83,7 +83,7 @@ router.post('/register', async (req, res) => {
         }
 
         // Check if user exists
-        const existingUser = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+        const existingUser = await db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
 
         if (existingUser) {
             return res.status(409).json({ error: 'Email already registered' });
@@ -94,13 +94,13 @@ router.post('/register', async (req, res) => {
         const companyId = uuidv4();
 
         // Create company first
-        db.prepare(`
+        await db.prepare(`
             INSERT INTO companies (id, name, plan, status)
             VALUES (?, ?, ?, ?)
         `).run(companyId, companyName || 'My Company', 'starter', 'active');
 
         // Create user
-        db.prepare(`
+        await db.prepare(`
             INSERT INTO users (id, email, password_hash, name, role, company_id)
             VALUES (?, ?, ?, ?, ?, ?)
         `).run(userId, email.toLowerCase(), hashedPassword, name, 'client_admin', companyId);
@@ -128,7 +128,7 @@ router.post('/register', async (req, res) => {
 });
 
 // Verify token
-router.get('/verify', (req, res) => {
+router.get('/verify', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
 
@@ -140,7 +140,7 @@ router.get('/verify', (req, res) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
 
         // Get user from database
-        const user = db.prepare(`
+        const user = await db.prepare(`
             SELECT u.*, c.name as company_name 
             FROM users u 
             LEFT JOIN companies c ON u.company_id = c.id 
@@ -175,7 +175,7 @@ router.post('/logout', (req, res) => {
 });
 
 // Get current user profile
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
 
@@ -186,7 +186,7 @@ router.get('/me', (req, res) => {
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
 
-        const user = db.prepare(`
+        const user = await db.prepare(`
             SELECT u.*, c.name as company_name, c.industry, c.plan
             FROM users u 
             LEFT JOIN companies c ON u.company_id = c.id 
@@ -212,6 +212,153 @@ router.get('/me', (req, res) => {
     } catch (error) {
         res.status(401).json({ error: 'Invalid token' });
     }
+});
+
+// ============================================
+// Google OAuth Routes
+// ============================================
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/api/auth/google/callback';
+
+// Initiate Google OAuth
+router.get('/google', (req, res) => {
+    if (!GOOGLE_CLIENT_ID) {
+        return res.status(500).json({ error: 'Google OAuth not configured' });
+    }
+
+    const params = new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        response_type: 'code',
+        scope: 'openid email profile',
+        access_type: 'offline',
+        prompt: 'consent'
+    });
+
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    res.redirect(authUrl);
+});
+
+// Google OAuth callback
+router.get('/google/callback', async (req, res) => {
+    try {
+        const { code, error: authError } = req.query;
+
+        if (authError) {
+            console.error('[GOOGLE AUTH] Error:', authError);
+            return res.redirect('/login?error=google_auth_failed');
+        }
+
+        if (!code) {
+            return res.redirect('/login?error=no_code');
+        }
+
+        // Exchange code for tokens
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: GOOGLE_CLIENT_ID,
+                client_secret: GOOGLE_CLIENT_SECRET,
+                code,
+                grant_type: 'authorization_code',
+                redirect_uri: GOOGLE_REDIRECT_URI
+            })
+        });
+
+        if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+            console.error('[GOOGLE AUTH] Token exchange failed:', errorText);
+            return res.redirect('/login?error=token_exchange_failed');
+        }
+
+        const tokens = await tokenResponse.json();
+
+        // Get user info from Google
+        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { Authorization: `Bearer ${tokens.access_token}` }
+        });
+
+        if (!userInfoResponse.ok) {
+            return res.redirect('/login?error=user_info_failed');
+        }
+
+        const googleUser = await userInfoResponse.json();
+        console.log('[GOOGLE AUTH] User info:', googleUser.email, googleUser.name);
+
+        // Check if user exists
+        let user = await db.prepare(`
+            SELECT u.*, c.name as company_name 
+            FROM users u 
+            LEFT JOIN companies c ON u.company_id = c.id 
+            WHERE LOWER(u.email) = LOWER(?)
+        `).get(googleUser.email);
+
+        if (!user) {
+            // Create new user
+            const userId = uuidv4();
+            const companyId = uuidv4();
+
+            // Create company
+            await db.prepare(`
+                INSERT INTO companies (id, name, plan, status)
+                VALUES (?, ?, ?, ?)
+            `).run(companyId, `${googleUser.name}'s Company`, 'starter', 'active');
+
+            // Create user (no password for OAuth users)
+            await db.prepare(`
+                INSERT INTO users (id, email, password_hash, name, role, company_id, google_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(userId, googleUser.email.toLowerCase(), '', googleUser.name, 'client_admin', companyId, googleUser.id);
+
+            user = {
+                id: userId,
+                email: googleUser.email.toLowerCase(),
+                name: googleUser.name,
+                role: 'client_admin',
+                company_id: companyId,
+                company_name: `${googleUser.name}'s Company`
+            };
+
+            console.log('[GOOGLE AUTH] Created new user:', user.email);
+        } else {
+            console.log('[GOOGLE AUTH] Existing user login:', user.email);
+        }
+
+        // Generate JWT token
+        const token = generateToken(user);
+
+        // Redirect to frontend with token
+        // For Electron app, we use a custom protocol or deep link
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+
+    } catch (error) {
+        console.error('[GOOGLE AUTH] Callback error:', error);
+        res.redirect('/login?error=callback_failed');
+    }
+});
+
+// Get Google auth URL (for frontend to redirect)
+router.get('/google/url', (req, res) => {
+    if (!GOOGLE_CLIENT_ID) {
+        return res.status(500).json({ error: 'Google OAuth not configured' });
+    }
+
+    const params = new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        response_type: 'code',
+        scope: 'openid email profile',
+        access_type: 'offline',
+        prompt: 'consent'
+    });
+
+    res.json({
+        url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+    });
 });
 
 module.exports = router;

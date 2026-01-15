@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useDemoMode } from '../contexts/DemoModeContext';
@@ -70,8 +70,44 @@ function AppShell() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const [showShowcase, setShowShowcase] = useState(false);
+    const [updateProgress, setUpdateProgress] = useState(null); // { status: 'downloading', percent: 50 }
+    const [adminMode, setAdminMode] = useState(() => {
+        const stored = localStorage.getItem('bam_admin_mode');
+        return stored !== 'false'; // Default to true (admin mode ON)
+    });
 
-    const navItems = NAV_ITEMS[user?.role] || NAV_ITEMS.knowledge_consumer;
+    // Toggle admin mode and persist
+    const toggleAdminMode = () => {
+        const newValue = !adminMode;
+        setAdminMode(newValue);
+        localStorage.setItem('bam_admin_mode', newValue.toString());
+    };
+
+    // Listen for update progress from main process
+    useEffect(() => {
+        const handleUpdateStatus = (event, data) => {
+            console.log('[UPDATE] Status:', data);
+            if (data.status === 'downloading') {
+                setUpdateProgress(data);
+            } else {
+                setUpdateProgress(null);
+            }
+        };
+
+        if (window.electronAPI?.onUpdateStatus) {
+            window.electronAPI.onUpdateStatus(handleUpdateStatus);
+        }
+
+        return () => {
+            // Cleanup listener if needed
+        };
+    }, []);
+
+    // Get nav items and filter based on admin mode
+    const baseNavItems = NAV_ITEMS[user?.role] || NAV_ITEMS.knowledge_consumer;
+    const navItems = adminMode
+        ? baseNavItems
+        : baseNavItems.filter(item => item.path !== '/content'); // Hide Content Engine when admin mode is OFF
 
     const handleLogout = async () => {
         await logout();
@@ -108,6 +144,19 @@ function AppShell() {
                 <div className="demo-mode-banner">
                     <Sparkles size={16} />
                     <span>Demo Mode Active — Showing sample data</span>
+                </div>
+            )}
+
+            {/* Update Download Progress Bar */}
+            {updateProgress && updateProgress.status === 'downloading' && (
+                <div className="update-progress-banner">
+                    <span>⬇️ Downloading update: {updateProgress.percent}%</span>
+                    <div className="update-progress-bar">
+                        <div
+                            className="update-progress-fill"
+                            style={{ width: `${updateProgress.percent}%` }}
+                        />
+                    </div>
                 </div>
             )}
 
@@ -176,6 +225,17 @@ function AppShell() {
                                 <span className="user-role">{user?.role?.replace('_', ' ')}</span>
                             </div>
                         </div>
+                    )}
+                    {/* Admin Mode Toggle */}
+                    {!sidebarCollapsed && (
+                        <label className="admin-mode-toggle" title="Admin Mode: Shows all features including unfinished ones">
+                            <input
+                                type="checkbox"
+                                checked={adminMode}
+                                onChange={toggleAdminMode}
+                            />
+                            <span className="admin-mode-label">Admin</span>
+                        </label>
                     )}
                     <button
                         className="btn btn-ghost btn-icon logout-btn"
