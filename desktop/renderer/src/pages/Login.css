@@ -202,6 +202,65 @@
     text-align: center;
 }
 
+/* Success Message */
+.success-message {
+    padding: var(--space-3) var(--space-4);
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    font-size: var(--font-size-sm);
+    border-radius: var(--radius-md);
+    text-align: center;
+}
+
+/* Forgot Password Styles */
+.forgot-header {
+    text-align: center;
+    margin-bottom: var(--space-6);
+}
+
+.forgot-title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-2);
+}
+
+.forgot-subtitle {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-4);
+}
+
+.back-to-login {
+    background: none;
+    border: none;
+    color: var(--color-accent-primary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: color var(--transition-fast);
+}
+
+.back-to-login:hover {
+    color: var(--color-accent-secondary);
+}
+
+.forgot-password-link {
+    background: none;
+    border: none;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: color var(--transition-fast);
+    text-align: right;
+    display: block;
+    width: 100%;
+    margin-top: calc(-1 * var(--space-3));
+}
+
+.forgot-password-link:hover {
+    color: var(--color-accent-primary);
+}
+
 .login-submit {
     width: 100%;
     margin-top: var(--space-2);

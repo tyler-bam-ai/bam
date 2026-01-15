@@ -5,25 +5,42 @@
  * Automatically switches between development and production.
  */
 
-// Detect environment - check for Electron or localhost
+// Detect if running in Electron
 const isElectron = typeof window !== 'undefined' &&
     (window.navigator.userAgent.includes('Electron') ||
         window.location.protocol === 'file:' ||
         window.location.protocol === 'app:');
 
-const isDevelopment = process.env.NODE_ENV !== 'production' ||
-    window.location.hostname === 'localhost' ||
-    isElectron;
+// Check if running in LOCAL development:
+// - Must be on localhost (http://localhost:3000 webpack dev server)
+// - file:// protocol means packaged app, should use Railway
+const isLocalDev = typeof window !== 'undefined' &&
+    window.location.hostname === 'localhost' &&
+    window.location.protocol === 'http:';
 
-// API Configuration - always use localhost:3001 for Electron/development
-export const API_URL = isDevelopment || isElectron
+// Railway production backend URL
+const RAILWAY_API_URL = 'https://bam-production-c677.up.railway.app';
+const RAILWAY_WS_URL = 'wss://bam-production-c677.up.railway.app';
+
+// API Configuration
+// Use localhost ONLY when running webpack dev server (http://localhost:3000)
+// Packaged Electron app uses Railway
+export const API_URL = isLocalDev
     ? 'http://localhost:3001'
-    : (process.env.REACT_APP_API_URL || 'https://api.bam.ai');
+    : RAILWAY_API_URL;
 
 // WebSocket Configuration
-export const WS_URL = isDevelopment || isElectron
+export const WS_URL = isLocalDev
     ? 'ws://localhost:3001'
-    : (process.env.REACT_APP_WS_URL || 'wss://api.bam.ai');
+    : RAILWAY_WS_URL;
+
+// Log for debugging
+if (typeof window !== 'undefined') {
+    console.log('[CONFIG] Protocol:', window.location.protocol);
+    console.log('[CONFIG] Hostname:', window.location.hostname);
+    console.log('[CONFIG] isLocalDev:', isLocalDev);
+    console.log('[CONFIG] API_URL:', isLocalDev ? 'http://localhost:3001' : RAILWAY_API_URL);
+}
 
 // Retry fetch helper - retries on network errors (useful when backend is starting)
 export const retryFetch = async (url, options = {}, maxRetries = 3, delayMs = 1000) => {
@@ -53,8 +70,8 @@ export const FEATURES = {
 
 // Environment info
 export const ENV = {
-    isDevelopment,
-    isProduction: !isDevelopment,
+    isDevelopment: isLocalDev,
+    isProduction: !isLocalDev,
     isElectron,
     version: '1.0.9',
 };

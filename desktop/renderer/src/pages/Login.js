@@ -10,13 +10,14 @@ function Login() {
     const { user, login, register, loading, error } = useAuth();
     const navigate = useNavigate();
 
-    const [mode, setMode] = useState('signin'); // 'signin' or 'signup'
+    const [mode, setMode] = useState('signin'); // 'signin', 'signup', or 'forgot'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
     const [companyName, setCompanyName] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [localError, setLocalError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
 
     // Redirect if already logged in
     if (user) {
@@ -26,6 +27,31 @@ function Login() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLocalError('');
+        setSuccessMessage('');
+
+        // Handle forgot password mode
+        if (mode === 'forgot') {
+            if (!email) {
+                setLocalError('Please enter your email');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_URL}/api/auth/forgot-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    setSuccessMessage(data.message);
+                } else {
+                    setLocalError(data.error || 'Failed to send reset email');
+                }
+            } catch (err) {
+                setLocalError('Failed to connect to server');
+            }
+            return;
+        }
 
         if (!email || !password) {
             setLocalError('Please enter both email and password');
@@ -105,23 +131,37 @@ function Login() {
                     </p>
                 </div>
 
-                {/* Mode Tabs */}
-                <div className="auth-tabs">
-                    <button
-                        className={`auth-tab ${mode === 'signin' ? 'active' : ''}`}
-                        onClick={() => { setMode('signin'); setLocalError(''); }}
-                        type="button"
-                    >
-                        Sign In
-                    </button>
-                    <button
-                        className={`auth-tab ${mode === 'signup' ? 'active' : ''}`}
-                        onClick={() => { setMode('signup'); setLocalError(''); }}
-                        type="button"
-                    >
-                        Create Account
-                    </button>
-                </div>
+                {/* Mode Tabs - hide in forgot mode */}
+                {mode !== 'forgot' ? (
+                    <div className="auth-tabs">
+                        <button
+                            className={`auth-tab ${mode === 'signin' ? 'active' : ''}`}
+                            onClick={() => { setMode('signin'); setLocalError(''); setSuccessMessage(''); }}
+                            type="button"
+                        >
+                            Sign In
+                        </button>
+                        <button
+                            className={`auth-tab ${mode === 'signup' ? 'active' : ''}`}
+                            onClick={() => { setMode('signup'); setLocalError(''); setSuccessMessage(''); }}
+                            type="button"
+                        >
+                            Create Account
+                        </button>
+                    </div>
+                ) : (
+                    <div className="forgot-header">
+                        <h2 className="forgot-title">Reset Password</h2>
+                        <p className="forgot-subtitle">Enter your email and we'll send you a reset link</p>
+                        <button
+                            type="button"
+                            className="back-to-login"
+                            onClick={() => { setMode('signin'); setLocalError(''); setSuccessMessage(''); }}
+                        >
+                            ← Back to Sign In
+                        </button>
+                    </div>
+                )}
 
                 {/* Login Form */}
                 <form className="login-form" onSubmit={handleSubmit}>
@@ -179,29 +219,48 @@ function Login() {
                         </div>
                     </div>
 
-                    <div className="input-group">
-                        <label className="input-label" htmlFor="password">Password</label>
-                        <div className="input-with-icon">
-                            <Lock className="input-icon" size={18} />
-                            <input
-                                id="password"
-                                type={showPassword ? 'text' : 'password'}
-                                className={`input ${localError || error ? 'input-error' : ''}`}
-                                placeholder="••••••••"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                autoComplete="current-password"
-                            />
-                            <button
-                                type="button"
-                                className="password-toggle"
-                                onClick={() => setShowPassword(!showPassword)}
-                                tabIndex={-1}
-                            >
-                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
+                    {/* Password field - hide in forgot mode */}
+                    {mode !== 'forgot' && (
+                        <div className="input-group">
+                            <label className="input-label" htmlFor="password">Password</label>
+                            <div className="input-with-icon">
+                                <Lock className="input-icon" size={18} />
+                                <input
+                                    id="password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    className={`input ${localError || error ? 'input-error' : ''}`}
+                                    placeholder="••••••••"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    autoComplete="current-password"
+                                />
+                                <button
+                                    type="button"
+                                    className="password-toggle"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    tabIndex={-1}
+                                >
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {mode === 'signin' && (
+                        <button
+                            type="button"
+                            className="forgot-password-link"
+                            onClick={() => { setMode('forgot'); setLocalError(''); setSuccessMessage(''); }}
+                        >
+                            Forgot password?
+                        </button>
+                    )}
+
+                    {successMessage && (
+                        <div className="success-message">
+                            {successMessage}
+                        </div>
+                    )}
 
                     {(localError || error) && (
                         <div className="error-message">
@@ -218,7 +277,7 @@ function Login() {
                             <span className="loading-spinner" style={{ width: 20, height: 20 }}></span>
                         ) : (
                             <>
-                                {mode === 'signup' ? 'Create Account' : 'Sign In'}
+                                {mode === 'forgot' ? 'Send Reset Link' : mode === 'signup' ? 'Create Account' : 'Sign In'}
                                 <ArrowRight size={18} />
                             </>
                         )}

@@ -174,6 +174,123 @@ router.post('/logout', (req, res) => {
     res.json({ success: true, message: 'Logged out successfully' });
 });
 
+// ============================================
+// Password Reset Routes
+// ============================================
+
+// Request password reset
+router.post('/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ error: 'Email is required' });
+        }
+
+        // Check if user exists
+        const user = await db.prepare('SELECT id, email, name FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+
+        if (!user) {
+            // Don't reveal if email exists or not for security
+            return res.json({
+                success: true,
+                message: 'If an account exists with this email, you will receive a password reset link.'
+            });
+        }
+
+        // Generate reset token (expires in 1 hour)
+        const resetToken = jwt.sign(
+            { userId: user.id, email: user.email, purpose: 'password-reset' },
+            process.env.JWT_SECRET || 'dev-secret',
+            { expiresIn: '1h' }
+        );
+
+        // Store reset token in database (optional - for token invalidation)
+        await db.prepare(`
+            UPDATE users SET reset_token = ?, reset_token_expires = datetime('now', '+1 hour')
+            WHERE id = ?
+        `).run(resetToken, user.id);
+
+        // Build reset URL
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+        // TODO: Send email with reset link
+        // For now, log to console (replace with actual email service)
+        console.log('===========================================');
+        console.log('PASSWORD RESET REQUESTED');
+        console.log('Email:', user.email);
+        console.log('Name:', user.name);
+        console.log('Reset URL:', resetUrl);
+        console.log('===========================================');
+
+        res.json({
+            success: true,
+            message: 'If an account exists with this email, you will receive a password reset link.',
+            // Include resetUrl in dev mode for testing
+            ...(process.env.NODE_ENV !== 'production' && { resetUrl })
+        });
+
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        res.status(500).json({ error: 'Failed to process password reset request' });
+    }
+});
+
+// Reset password with token
+router.post('/reset-password', async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+
+        if (!token || !newPassword) {
+            return res.status(400).json({ error: 'Token and new password are required' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+
+        // Verify token
+        let decoded;
+        try {
+            decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+        } catch (err) {
+            return res.status(400).json({ error: 'Invalid or expired reset token' });
+        }
+
+        if (decoded.purpose !== 'password-reset') {
+            return res.status(400).json({ error: 'Invalid reset token' });
+        }
+
+        // Get user and verify token matches
+        const user = await db.prepare('SELECT id, reset_token FROM users WHERE id = ?').get(decoded.userId);
+
+        if (!user) {
+            return res.status(400).json({ error: 'User not found' });
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update password and clear reset token
+        await db.prepare(`
+            UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL
+            WHERE id = ?
+        `).run(hashedPassword, user.id);
+
+        console.log('[PASSWORD RESET] Password updated for user:', decoded.email);
+
+        res.json({
+            success: true,
+            message: 'Password has been reset successfully. You can now log in with your new password.'
+        });
+
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json({ error: 'Failed to reset password' });
+    }
+});
+
 // Get current user profile
 router.get('/me', async (req, res) => {
     try {
