@@ -13,6 +13,55 @@ const store = new Store({
 let mainWindow;
 let backendProcess = null;
 
+// Register custom protocol for OAuth callback
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('bam-auth', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('bam-auth');
+}
+
+// Handle the protocol. This is for macOS
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  console.log('[OAUTH] Received protocol URL:', url);
+  handleOAuthCallback(url);
+});
+
+function handleOAuthCallback(url) {
+  console.log('[OAUTH] Handling callback URL:', url);
+
+  try {
+    const urlObj = new URL(url);
+    const token = urlObj.searchParams.get('token');
+
+    if (token) {
+      console.log('[OAUTH] Token received, storing...');
+      store.set('authToken', token);
+
+      // Reload the main window to dashboard
+      if (mainWindow) {
+        if (app.isPackaged) {
+          const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+          mainWindow.loadFile(indexPath).then(() => {
+            mainWindow.webContents.executeJavaScript(`
+              localStorage.setItem('bam_token', '${token}');
+              localStorage.setItem('token', '${token}');
+              window.location.hash = '#/dashboard';
+              window.location.reload();
+            `);
+          });
+        } else {
+          mainWindow.loadURL('http://localhost:3000/#/dashboard');
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[OAUTH] Error handling callback:', error);
+  }
+}
+
 // =====================================================
 // AUTO-UPDATER CONFIGURATION
 // =====================================================
@@ -422,6 +471,90 @@ function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('Page finished loading');
+  });
+
+  // Intercept OAuth callback navigation to extract token and return to local app
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    console.log('[OAUTH] Navigating to:', url);
+
+    // Check if this is the bam-auth:// protocol callback
+    if (url.startsWith('bam-auth://')) {
+      console.log('[OAUTH] Intercepting bam-auth:// protocol');
+      event.preventDefault();
+      handleOAuthCallback(url);
+      return;
+    }
+
+    // Check if this is an OAuth callback from Railway
+    if (url.includes('/api/auth/google/callback') && url.includes('code=')) {
+      console.log('[OAUTH] Detected OAuth callback, will fetch token...');
+      // Let it proceed - the callback will handle token generation
+    }
+
+    // Check if trying to navigate to /dashboard on Railway (wrong domain)
+    if (url.includes('bam-production') && url.includes('/dashboard')) {
+      console.log('[OAUTH] Intercepting Railway dashboard redirect - returning to local app');
+      event.preventDefault();
+
+      // Reload the local app
+      if (app.isPackaged) {
+        const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+        mainWindow.loadFile(indexPath, { hash: 'dashboard' });
+      } else {
+        mainWindow.loadURL('http://localhost:3000/#/dashboard');
+      }
+    }
+  });
+
+  // Also intercept did-navigate to handle post-OAuth state
+  mainWindow.webContents.on('did-navigate', (event, url) => {
+    console.log('[OAUTH] Did navigate to:', url);
+
+    // If we're on Railway after OAuth, extract token from page and return home
+    if (url.includes('bam-production') && !url.includes('/api/auth/google')) {
+      console.log('[OAUTH] On Railway post-OAuth, attempting to extract token...');
+
+      // Execute script to get token from localStorage and send back
+      mainWindow.webContents.executeJavaScript(`
+        (function() {
+          const token = localStorage.getItem('bam_token');
+          const user = localStorage.getItem('bam_user');
+          return { token, user };
+        })()
+      `).then(async (result) => {
+        console.log('[OAUTH] Extracted from Railway localStorage:', result.token ? 'token found' : 'no token');
+
+        if (result.token) {
+          // Store in electron-store
+          store.set('authToken', result.token);
+          if (result.user) {
+            try {
+              const user = JSON.parse(result.user);
+              store.set('currentUser', user);
+            } catch (e) {
+              console.error('[OAUTH] Failed to parse user:', e);
+            }
+          }
+
+          // Now navigate back to local app
+          if (app.isPackaged) {
+            const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+            await mainWindow.loadFile(indexPath);
+
+            // Inject the token into local localStorage
+            await mainWindow.webContents.executeJavaScript(`
+              localStorage.setItem('bam_token', '${result.token}');
+              localStorage.setItem('token', '${result.token}');
+              ${result.user ? `localStorage.setItem('bam_user', '${result.user.replace(/'/g, "\\'")}');` : ''}
+              window.location.hash = '#/dashboard';
+              window.location.reload();
+            `);
+          }
+        }
+      }).catch(err => {
+        console.error('[OAUTH] Failed to extract token:', err);
+      });
+    }
   });
 
   if (app.isPackaged) {
