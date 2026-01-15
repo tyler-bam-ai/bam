@@ -447,10 +447,69 @@ router.get('/google/callback', async (req, res) => {
         // Generate JWT token
         const token = generateToken(user);
 
-        // Redirect to frontend with token
-        // For Electron app, we use a custom protocol or deep link
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+        // Return HTML page that stores token and redirects
+        // This works for both Electron (file://) and web (http://)
+        const userJson = JSON.stringify({
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            companyId: user.company_id,
+            companyName: user.company_name
+        });
+
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Login Successful</title>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+                        color: white;
+                        min-height: 100vh;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        margin: 0;
+                    }
+                    .container { text-align: center; }
+                    .spinner {
+                        width: 40px;
+                        height: 40px;
+                        border: 3px solid rgba(255,255,255,0.3);
+                        border-top-color: #a855f7;
+                        border-radius: 50%;
+                        animation: spin 1s linear infinite;
+                        margin: 0 auto 20px;
+                    }
+                    @keyframes spin { to { transform: rotate(360deg); } }
+                    h2 { margin-bottom: 10px; }
+                    p { color: #888; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="spinner"></div>
+                    <h2>Login Successful!</h2>
+                    <p>Redirecting to BAM.ai...</p>
+                </div>
+                <script>
+                    // Store token and user in localStorage
+                    localStorage.setItem('bam_token', '${token}');
+                    localStorage.setItem('token', '${token}');
+                    localStorage.setItem('bam_user', '${userJson.replace(/'/g, "\\'")}');
+                    
+                    // Redirect to dashboard
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1000);
+                </script>
+            </body>
+            </html>
+        `);
 
     } catch (error) {
         console.error('[GOOGLE AUTH] Callback error:', error);

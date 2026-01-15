@@ -3,8 +3,10 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Mail, Lock, ArrowRight, Eye, EyeOff, User, Building } from 'lucide-react';
 import bamLogoGradient from '../assets/bam-icon-gradient.png';
-import { API_URL } from '../config';
 import './Login.css';
+
+// Railway backend for packaged app - uses cloud PostgreSQL
+const API_URL = 'https://bam-production-c677.up.railway.app';
 
 function Login() {
     const { user, login, register, loading, error } = useAuth();
@@ -97,16 +99,41 @@ function Login() {
     };
 
     const handleGoogleLogin = async () => {
+        console.log('=== GOOGLE LOGIN DEBUG ===');
+        console.log('API_URL:', API_URL);
+        const fullUrl = `${API_URL}/api/auth/google/url`;
+        console.log('Full URL:', fullUrl);
+
         try {
-            const response = await fetch(`${API_URL}/api/auth/google/url`);
-            if (response.ok) {
-                const { url } = await response.json();
-                window.location.href = url;
+            // Use IPC proxy to bypass renderer CORS restrictions
+            if (window.electronAPI?.network?.fetch) {
+                console.log('Using IPC network proxy...');
+                const result = await window.electronAPI.network.fetch(fullUrl);
+                console.log('IPC result:', result);
+
+                if (result.ok && result.data?.url) {
+                    console.log('Redirecting to:', result.data.url);
+                    window.location.href = result.data.url;
+                } else if (result.error) {
+                    setLocalError(`Failed to connect: ${result.error}`);
+                } else {
+                    setLocalError('Google login not configured');
+                }
             } else {
-                setLocalError('Google login not configured');
+                // Fallback to regular fetch for dev mode
+                console.log('Using regular fetch (dev mode)...');
+                const response = await fetch(fullUrl);
+                if (response.ok) {
+                    const data = await response.json();
+                    window.location.href = data.url;
+                } else {
+                    setLocalError('Google login not configured');
+                }
             }
         } catch (err) {
-            setLocalError('Failed to connect to server');
+            console.error('=== FETCH ERROR ===');
+            console.error('Error:', err);
+            setLocalError(`Failed to connect: ${err.message}`);
         }
     };
 

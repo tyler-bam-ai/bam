@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
+// Railway backend for packaged app - uses cloud PostgreSQL
+const API_URL = 'https://bam-production-c677.up.railway.app';
+
 const AuthContext = createContext(null);
 
 // Mock users for development
@@ -34,9 +37,6 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-
-    // Get API URL from config or default
-    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
     // Load user from token on mount
     useEffect(() => {
@@ -87,15 +87,33 @@ export function AuthProvider({ children }) {
         setLoading(true);
 
         try {
-            const response = await fetch(`${API_URL}/api/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            });
+            const url = `${API_URL}/api/auth/login`;
+            let data;
 
-            const data = await response.json();
+            // Use IPC proxy for packaged Electron app
+            if (window.electronAPI?.network?.fetch) {
+                console.log('[AUTH] Using IPC network proxy for login');
+                const result = await window.electronAPI.network.fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: { email, password }
+                });
 
-            if (response.ok && data.success) {
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                data = result.data;
+            } else {
+                // Regular fetch for dev mode
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                data = await response.json();
+            }
+
+            if (data.success) {
                 setUser(data.user);
 
                 // Store token in localStorage
@@ -120,22 +138,40 @@ export function AuthProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, [API_URL]);
+    }, []);
 
     const register = useCallback(async (email, password, name, companyName) => {
         setError(null);
         setLoading(true);
 
         try {
-            const response = await fetch(`${API_URL}/api/auth/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password, name, companyName })
-            });
+            const url = `${API_URL}/api/auth/register`;
+            let data;
 
-            const data = await response.json();
+            // Use IPC proxy for packaged Electron app
+            if (window.electronAPI?.network?.fetch) {
+                console.log('[AUTH] Using IPC network proxy for register');
+                const result = await window.electronAPI.network.fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: { email, password, name, companyName }
+                });
 
-            if (response.ok && data.success) {
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                data = result.data;
+            } else {
+                // Regular fetch for dev mode
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, name, companyName })
+                });
+                data = await response.json();
+            }
+
+            if (data.success) {
                 setUser(data.user);
 
                 // Store token in localStorage
@@ -160,7 +196,7 @@ export function AuthProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, [API_URL]);
+    }, []);
 
     const logout = useCallback(async () => {
         try {

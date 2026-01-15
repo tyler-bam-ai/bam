@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         setToken: (token) => ipcRenderer.invoke('auth:set-token', token)
     },
 
+    // Network Proxy - bypasses renderer CORS restrictions
+    network: {
+        fetch: (url, options) => ipcRenderer.invoke('network:fetch', url, options)
+    },
+
     // Screen Recording
     recording: {
         getSources: () => ipcRenderer.invoke('recording:get-sources'),

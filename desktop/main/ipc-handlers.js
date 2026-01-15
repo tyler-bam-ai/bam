@@ -38,6 +38,50 @@ function registerHandlers(ipcMain, mainWindow, store, desktopCapturerModule) {
     });
 
     // ============================================
+    // Network Proxy (bypass renderer CORS)
+    // ============================================
+
+    ipcMain.handle('network:fetch', async (event, url, options = {}) => {
+        console.log('[NETWORK] Proxying request to:', url);
+        try {
+            // Use Node's native fetch (available in Electron 28+)
+            const fetchOptions = {
+                method: options.method || 'GET',
+                headers: options.headers || {}
+            };
+
+            if (options.body) {
+                fetchOptions.body = JSON.stringify(options.body);
+            }
+
+            const response = await fetch(url, fetchOptions);
+            const contentType = response.headers.get('content-type') || '';
+
+            let data;
+            if (contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                data = await response.text();
+            }
+
+            console.log('[NETWORK] Response status:', response.status);
+
+            return {
+                ok: response.ok,
+                status: response.status,
+                data: data
+            };
+        } catch (error) {
+            console.error('[NETWORK] Fetch error:', error.message);
+            return {
+                ok: false,
+                status: 0,
+                error: error.message
+            };
+        }
+    });
+
+    // ============================================
     // Screen Recording
     // ============================================
 
