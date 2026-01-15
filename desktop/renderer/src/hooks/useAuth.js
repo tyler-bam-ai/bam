@@ -35,11 +35,38 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // Load user from Electron store on mount
+    // Get API URL from config or default
+    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+
+    // Load user from token on mount
     useEffect(() => {
         async function loadUser() {
             try {
-                if (window.electronAPI) {
+                // Check localStorage for token
+                const token = localStorage.getItem('bam_token') || localStorage.getItem('token');
+
+                if (token) {
+                    // Verify token with backend
+                    const response = await fetch(`${API_URL}/api/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        setUser(data.user);
+
+                        // Also store in Electron if available
+                        if (window.electronAPI) {
+                            await window.electronAPI.auth.setUser(data.user);
+                            await window.electronAPI.auth.setToken(token);
+                        }
+                    } else {
+                        // Invalid token, clean up
+                        localStorage.removeItem('bam_token');
+                        localStorage.removeItem('token');
+                    }
+                } else if (window.electronAPI) {
+                    // Try electron store as fallback
                     const storedUser = await window.electronAPI.auth.getUser();
                     if (storedUser) {
                         setUser(storedUser);
@@ -53,29 +80,39 @@ export function AuthProvider({ children }) {
         }
 
         loadUser();
-    }, []);
+    }, [API_URL]);
 
     const login = useCallback(async (email, password) => {
         setError(null);
         setLoading(true);
 
         try {
-            // Mock authentication for development
-            const mockUser = MOCK_USERS[email.toLowerCase()];
+            const response = await fetch(`${API_URL}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
 
-            if (mockUser && password === 'demo123') {
-                setUser(mockUser);
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                setUser(data.user);
+
+                // Store token in localStorage
+                localStorage.setItem('bam_token', data.token);
+                localStorage.setItem('token', data.token);
 
                 if (window.electronAPI) {
-                    await window.electronAPI.auth.setUser(mockUser);
-                    await window.electronAPI.auth.setToken('mock-jwt-token');
+                    await window.electronAPI.auth.setUser(data.user);
+                    await window.electronAPI.auth.setToken(data.token);
                 }
 
-                return { success: true, user: mockUser };
+                return { success: true, user: data.user };
             }
 
-            setError('Invalid email or password');
-            return { success: false, error: 'Invalid email or password' };
+            const errorMessage = data.error || 'Invalid email or password';
+            setError(errorMessage);
+            return { success: false, error: errorMessage };
         } catch (err) {
             const errorMessage = err.message || 'Login failed';
             setError(errorMessage);
@@ -83,10 +120,54 @@ export function AuthProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [API_URL]);
+
+    const register = useCallback(async (email, password, name, companyName) => {
+        setError(null);
+        setLoading(true);
+
+        try {
+            const response = await fetch(`${API_URL}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password, name, companyName })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                setUser(data.user);
+
+                // Store token in localStorage
+                localStorage.setItem('bam_token', data.token);
+                localStorage.setItem('token', data.token);
+
+                if (window.electronAPI) {
+                    await window.electronAPI.auth.setUser(data.user);
+                    await window.electronAPI.auth.setToken(data.token);
+                }
+
+                return { success: true, user: data.user };
+            }
+
+            const errorMessage = data.error || 'Registration failed';
+            setError(errorMessage);
+            return { success: false, error: errorMessage };
+        } catch (err) {
+            const errorMessage = err.message || 'Registration failed';
+            setError(errorMessage);
+            return { success: false, error: errorMessage };
+        } finally {
+            setLoading(false);
+        }
+    }, [API_URL]);
 
     const logout = useCallback(async () => {
         try {
+            // Clear localStorage
+            localStorage.removeItem('bam_token');
+            localStorage.removeItem('token');
+
             if (window.electronAPI) {
                 await window.electronAPI.auth.logout();
             }
@@ -94,6 +175,11 @@ export function AuthProvider({ children }) {
         } catch (err) {
             console.error('Logout error:', err);
         }
+    }, []);
+
+    const setToken = useCallback(async (token) => {
+        localStorage.setItem('bam_token', token);
+        localStorage.setItem('token', token);
     }, []);
 
     const updateUser = useCallback(async (updates) => {
@@ -131,7 +217,9 @@ export function AuthProvider({ children }) {
         loading,
         error,
         login,
+        register,
         logout,
+        setToken,
         updateUser,
         hasRole,
         isAdmin,

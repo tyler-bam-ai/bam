@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Eye, EyeOff, User, Building } from 'lucide-react';
 import bamLogoGradient from '../assets/bam-icon-gradient.png';
+import { API_URL } from '../config';
 import './Login.css';
 
 function Login() {
-    const { user, login, loading, error } = useAuth();
+    const { user, login, register, loading, error } = useAuth();
     const navigate = useNavigate();
 
+    const [mode, setMode] = useState('signin'); // 'signin' or 'signup'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [name, setName] = useState('');
+    const [companyName, setCompanyName] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [localError, setLocalError] = useState('');
 
@@ -28,12 +32,24 @@ function Login() {
             return;
         }
 
-        const result = await login(email, password);
-
-        if (result.success) {
-            navigate('/dashboard');
+        if (mode === 'signup') {
+            if (!name) {
+                setLocalError('Please enter your name');
+                return;
+            }
+            const result = await register(email, password, name, companyName);
+            if (result.success) {
+                navigate('/dashboard');
+            } else {
+                setLocalError(result.error);
+            }
         } else {
-            setLocalError(result.error);
+            const result = await login(email, password);
+            if (result.success) {
+                navigate('/dashboard');
+            } else {
+                setLocalError(result.error);
+            }
         }
     };
 
@@ -51,6 +67,20 @@ function Login() {
         const result = await login(account.email, account.password);
         if (result.success) {
             navigate('/dashboard');
+        }
+    };
+
+    const handleGoogleLogin = async () => {
+        try {
+            const response = await fetch(`${API_URL}/api/auth/google/url`);
+            if (response.ok) {
+                const { url } = await response.json();
+                window.location.href = url;
+            } else {
+                setLocalError('Google login not configured');
+            }
+        } catch (err) {
+            setLocalError('Failed to connect to server');
         }
     };
 
@@ -75,8 +105,63 @@ function Login() {
                     </p>
                 </div>
 
+                {/* Mode Tabs */}
+                <div className="auth-tabs">
+                    <button
+                        className={`auth-tab ${mode === 'signin' ? 'active' : ''}`}
+                        onClick={() => { setMode('signin'); setLocalError(''); }}
+                        type="button"
+                    >
+                        Sign In
+                    </button>
+                    <button
+                        className={`auth-tab ${mode === 'signup' ? 'active' : ''}`}
+                        onClick={() => { setMode('signup'); setLocalError(''); }}
+                        type="button"
+                    >
+                        Create Account
+                    </button>
+                </div>
+
                 {/* Login Form */}
                 <form className="login-form" onSubmit={handleSubmit}>
+                    {mode === 'signup' && (
+                        <>
+                            <div className="input-group">
+                                <label className="input-label" htmlFor="name">Full Name</label>
+                                <div className="input-with-icon">
+                                    <User className="input-icon" size={18} />
+                                    <input
+                                        id="name"
+                                        type="text"
+                                        className={`input ${localError || error ? 'input-error' : ''}`}
+                                        placeholder="John Smith"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        autoComplete="name"
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="input-group">
+                                <label className="input-label" htmlFor="company">Company Name (Optional)</label>
+                                <div className="input-with-icon">
+                                    <Building className="input-icon" size={18} />
+                                    <input
+                                        id="company"
+                                        type="text"
+                                        className="input"
+                                        placeholder="Your Company"
+                                        value={companyName}
+                                        onChange={(e) => setCompanyName(e.target.value)}
+                                        autoComplete="organization"
+                                    />
+                                </div>
+                            </div>
+                        </>
+                    )}
+
                     <div className="input-group">
                         <label className="input-label" htmlFor="email">Email</label>
                         <div className="input-with-icon">
@@ -89,7 +174,7 @@ function Login() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 autoComplete="email"
-                                autoFocus
+                                autoFocus={mode === 'signin'}
                             />
                         </div>
                     </div>
@@ -133,7 +218,7 @@ function Login() {
                             <span className="loading-spinner" style={{ width: 20, height: 20 }}></span>
                         ) : (
                             <>
-                                Sign In
+                                {mode === 'signup' ? 'Create Account' : 'Sign In'}
                                 <ArrowRight size={18} />
                             </>
                         )}
@@ -147,21 +232,9 @@ function Login() {
                     </div>
                     <button
                         className="btn btn-secondary btn-lg google-login-btn"
-                        onClick={async () => {
-                            try {
-                                const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-                                const response = await fetch(`${API_URL}/api/auth/google/url`);
-                                if (response.ok) {
-                                    const { url } = await response.json();
-                                    window.location.href = url;
-                                } else {
-                                    setLocalError('Google login not configured');
-                                }
-                            } catch (err) {
-                                setLocalError('Failed to connect to server');
-                            }
-                        }}
+                        onClick={handleGoogleLogin}
                         disabled={loading}
+                        type="button"
                     >
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -169,7 +242,7 @@ function Login() {
                             <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
                             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                         </svg>
-                        Sign in with Google
+                        {mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
                     </button>
                 </div>
 
