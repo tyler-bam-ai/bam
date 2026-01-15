@@ -447,8 +447,7 @@ router.get('/google/callback', async (req, res) => {
         // Generate JWT token
         const token = generateToken(user);
 
-        // Return HTML page with token embedded as data attribute
-        // Electron's main process can extract this
+        // Encode user data for URL
         const userJson = JSON.stringify({
             id: user.id,
             email: user.email,
@@ -457,128 +456,12 @@ router.get('/google/callback', async (req, res) => {
             companyId: user.company_id,
             companyName: user.company_name
         });
+        const encodedUser = encodeURIComponent(userJson);
 
-        res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Login Successful - BAM.ai</title>
-                <meta name="bam-token" content="${token}">
-                <meta name="bam-user" content='${userJson.replace(/'/g, "&apos;")}'>
-                <style>
-                    * { box-sizing: border-box; }
-                    body {
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                        background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
-                        color: white;
-                        min-height: 100vh;
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        justify-content: center;
-                        margin: 0;
-                        padding: 20px;
-                    }
-                    .container { 
-                        text-align: center;
-                        background: rgba(255,255,255,0.05);
-                        padding: 40px;
-                        border-radius: 16px;
-                        max-width: 400px;
-                    }
-                    .checkmark {
-                        width: 60px;
-                        height: 60px;
-                        background: linear-gradient(135deg, #a855f7, #ec4899);
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        margin: 0 auto 20px;
-                        font-size: 30px;
-                    }
-                    h2 { margin: 0 0 10px; font-size: 24px; }
-                    .email { color: #a855f7; margin-bottom: 20px; }
-                    p { color: #888; margin: 10px 0; }
-                    .btn {
-                        background: linear-gradient(135deg, #a855f7, #ec4899);
-                        border: none;
-                        color: white;
-                        padding: 12px 32px;
-                        border-radius: 8px;
-                        font-size: 16px;
-                        cursor: pointer;
-                        margin-top: 20px;
-                        width: 100%;
-                    }
-                    .btn:hover { opacity: 0.9; }
-                    .spinner {
-                        width: 20px;
-                        height: 20px;
-                        border: 2px solid rgba(255,255,255,0.3);
-                        border-top-color: white;
-                        border-radius: 50%;
-                        animation: spin 1s linear infinite;
-                        display: inline-block;
-                        margin-right: 8px;
-                    }
-                    @keyframes spin { to { transform: rotate(360deg); } }
-                    .status { margin-top: 15px; font-size: 14px; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="checkmark">✓</div>
-                    <h2>Welcome, ${user.name}!</h2>
-                    <p class="email">${user.email}</p>
-                    <p>You're now signed in to BAM.ai</p>
-                    <button class="btn" onclick="returnToApp()">
-                        <span class="spinner" id="spinner" style="display:none"></span>
-                        <span id="btnText">Return to App</span>
-                    </button>
-                    <p class="status" id="status">Click the button above to continue</p>
-                </div>
-                <script>
-                    // Store auth data
-                    const token = '${token}';
-                    const userData = ${userJson};
-                    
-                    function returnToApp() {
-                        document.getElementById('spinner').style.display = 'inline-block';
-                        document.getElementById('btnText').textContent = 'Returning...';
-                        document.getElementById('status').textContent = 'Closing this window...';
-                        
-                        // Try to communicate with Electron via window object
-                        if (window.electronAPI) {
-                            // If in Electron with preload, use IPC
-                            window.electronAPI.auth.setToken(token);
-                            window.electronAPI.auth.setUser(userData);
-                        }
-                        
-                        // Store in sessionStorage (will be available when we navigate)
-                        sessionStorage.setItem('oauth_token', token);
-                        sessionStorage.setItem('oauth_user', JSON.stringify(userData));
-                        
-                        // Navigate back to origin
-                        setTimeout(() => {
-                            // This will trigger Electron's navigation listener
-                            window.location.href = 'bam-auth://callback?token=' + token;
-                        }, 500);
-                        
-                        // Fallback: just close after delay
-                        setTimeout(() => {
-                            document.getElementById('status').textContent = 'If the app doesn\\'t open, please close this window manually.';
-                        }, 3000);
-                    }
-                    
-                    // Auto-click after 2 seconds 
-                    setTimeout(() => {
-                        returnToApp();
-                    }, 2000);
-                </script>
-            </body>
-            </html>
-        `);
+        // Redirect to a special path that Electron intercepts
+        // The token is in the URL, Electron will extract it before rendering
+        console.log('[GOOGLE AUTH] Redirecting with token to special callback path');
+        res.redirect(`/auth/success?token=${token}&user=${encodedUser}`);
 
     } catch (error) {
         console.error('[GOOGLE AUTH] Callback error:', error);

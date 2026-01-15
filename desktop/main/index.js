@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, Menu, dialog, session } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const { fork } = require('child_process');
@@ -60,6 +60,73 @@ function handleOAuthCallback(url) {
   } catch (error) {
     console.error('[OAUTH] Error handling callback:', error);
   }
+}
+
+// Setup OAuth response interceptor
+function setupOAuthInterceptor() {
+  const filter = {
+    urls: ['*://bam-production-c677.up.railway.app/api/auth/google/callback*']
+  };
+
+  session.defaultSession.webRequest.onCompleted(filter, async (details) => {
+    console.log('[OAUTH INTERCEPTOR] Callback completed:', details.url);
+
+    // After the callback page loads, extract the token from meta tags
+    if (mainWindow && details.statusCode === 200) {
+      // Wait a moment for the page to render
+      setTimeout(async () => {
+        try {
+          const result = await mainWindow.webContents.executeJavaScript(`
+            (function() {
+              const tokenMeta = document.querySelector('meta[name="bam-token"]');
+              const userMeta = document.querySelector('meta[name="bam-user"]');
+              return {
+                token: tokenMeta ? tokenMeta.content : null,
+                user: userMeta ? userMeta.content : null
+              };
+            })()
+          `);
+
+          console.log('[OAUTH INTERCEPTOR] Extracted:', result.token ? 'token found' : 'no token');
+
+          if (result.token) {
+            // Store the token
+            store.set('authToken', result.token);
+
+            if (result.user) {
+              try {
+                const user = JSON.parse(result.user.replace(/&apos;/g, "'"));
+                store.set('currentUser', user);
+              } catch (e) {
+                console.error('[OAUTH INTERCEPTOR] Failed to parse user:', e);
+              }
+            }
+
+            // Navigate back to local app
+            if (app.isPackaged) {
+              const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+              await mainWindow.loadFile(indexPath);
+
+              // Inject the token into local localStorage and navigate to dashboard
+              await mainWindow.webContents.executeJavaScript(`
+                localStorage.setItem('bam_token', '${result.token}');
+                localStorage.setItem('token', '${result.token}');
+                window.location.hash = '/dashboard';
+              `);
+
+              console.log('[OAUTH INTERCEPTOR] Successfully returned to local app with token');
+            } else {
+              mainWindow.loadURL('http://localhost:3000/#/dashboard');
+            }
+          }
+        } catch (err) {
+          console.error('[OAUTH INTERCEPTOR] Error extracting token:', err);
+        }
+      }, 1500); // Wait 1.5 seconds for page to fully render
+    }
+  });
+
+  console.log('[OAUTH] Interceptor setup complete');
 }
 
 // =====================================================
@@ -491,6 +558,50 @@ function createWindow() {
       // Let it proceed - the callback will handle token generation
     }
 
+    // Check if this is the success redirect with token
+    if (url.includes('/auth/success') && url.includes('token=')) {
+      console.log('[OAUTH] Intercepting auth success URL with token');
+      event.preventDefault();
+
+      try {
+        const urlObj = new URL(url);
+        const token = urlObj.searchParams.get('token');
+        const encodedUser = urlObj.searchParams.get('user');
+
+        if (token) {
+          console.log('[OAUTH] Token extracted from URL');
+          store.set('authToken', token);
+
+          if (encodedUser) {
+            try {
+              const user = JSON.parse(decodeURIComponent(encodedUser));
+              store.set('currentUser', user);
+              console.log('[OAUTH] User stored:', user.email);
+            } catch (e) {
+              console.error('[OAUTH] Failed to parse user:', e);
+            }
+          }
+
+          // Navigate back to local app with token
+          if (app.isPackaged) {
+            const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+            mainWindow.loadFile(indexPath).then(() => {
+              mainWindow.webContents.executeJavaScript(`
+                localStorage.setItem('bam_token', '${token}');
+                localStorage.setItem('token', '${token}');
+                window.location.hash = '/dashboard';
+              `);
+            });
+          } else {
+            mainWindow.loadURL('http://localhost:3000/#/dashboard');
+          }
+        }
+      } catch (err) {
+        console.error('[OAUTH] Error extracting token from URL:', err);
+      }
+      return;
+    }
+
     // Check if trying to navigate to /dashboard on Railway (wrong domain)
     if (url.includes('bam-production') && url.includes('/dashboard')) {
       console.log('[OAUTH] Intercepting Railway dashboard redirect - returning to local app');
@@ -586,6 +697,9 @@ app.whenReady().then(() => {
 
   // Create application menu
   createMenu();
+
+  // Setup OAuth interceptor
+  setupOAuthInterceptor();
 
   // Start backend server in background
   startBackendServer().catch(err => {
