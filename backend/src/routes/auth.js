@@ -456,20 +456,108 @@ router.get('/google/callback', async (req, res) => {
             companyId: user.company_id,
             companyName: user.company_name
         });
-        const encodedUser = encodeURIComponent(userJson);
 
-        // Redirect to a special path that Electron intercepts
-        // Use full URL so Electron's will-navigate can properly intercept
-        const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
-            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-            : 'https://bam-production-c677.up.railway.app';
+        // Instead of redirecting, show a success page with instructions
+        // The Electron app polls for the token via electron-store
+        console.log('[GOOGLE AUTH] Login successful for:', user.email);
 
-        console.log('[GOOGLE AUTH] Redirecting with token to:', `${baseUrl}/auth/success`);
-        res.redirect(`${baseUrl}/auth/success?token=${token}&user=${encodedUser}`);
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Login Successful - BAM.ai</title>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+                        color: white;
+                        min-height: 100vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        margin: 0;
+                    }
+                    .container {
+                        text-align: center;
+                        background: rgba(255,255,255,0.05);
+                        padding: 40px 60px;
+                        border-radius: 16px;
+                    }
+                    .checkmark {
+                        width: 80px;
+                        height: 80px;
+                        background: linear-gradient(135deg, #a855f7, #ec4899);
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        margin: 0 auto 24px;
+                        font-size: 40px;
+                    }
+                    h1 { margin: 0 0 16px; font-size: 28px; }
+                    p { color: #888; margin: 8px 0; font-size: 16px; }
+                    .email { color: #a855f7; font-weight: 500; }
+                    .instruction { 
+                        margin-top: 24px;
+                        padding: 16px;
+                        background: rgba(168, 85, 247, 0.1);
+                        border-radius: 8px;
+                        border: 1px solid rgba(168, 85, 247, 0.2);
+                    }
+                    .token-box {
+                        margin-top: 20px;
+                        padding: 12px;
+                        background: rgba(0,0,0,0.3);
+                        border-radius: 8px;
+                        font-family: monospace;
+                        font-size: 11px;
+                        word-break: break-all;
+                        max-width: 400px;
+                        display: none;
+                    }
+                    .copy-btn {
+                        margin-top: 12px;
+                        padding: 12px 32px;
+                        background: linear-gradient(135deg, #a855f7, #ec4899);
+                        border: none;
+                        color: white;
+                        border-radius: 8px;
+                        font-size: 16px;
+                        cursor: pointer;
+                    }
+                    .copy-btn:hover { opacity: 0.9; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="checkmark">✓</div>
+                    <h1>Welcome, ${user.name}!</h1>
+                    <p class="email">${user.email}</p>
+                    <p>You're now signed in to BAM.ai</p>
+                    <div class="instruction">
+                        <p><strong>Return to the BAM.ai app</strong></p>
+                        <p>The app should automatically detect your login.</p>
+                        <p>You can close this browser tab.</p>
+                    </div>
+                    <div class="token-box" id="tokenBox">${token}</div>
+                    <button class="copy-btn" onclick="copyToken()">Copy Token (if needed)</button>
+                </div>
+                <script>
+                    function copyToken() {
+                        const token = document.getElementById('tokenBox').textContent;
+                        navigator.clipboard.writeText(token).then(() => {
+                            alert('Token copied! Paste it in the app if needed.');
+                        });
+                    }
+                </script>
+            </body>
+            </html>
+        `);
 
     } catch (error) {
         console.error('[GOOGLE AUTH] Callback error:', error);
-        res.redirect('/login?error=callback_failed');
+        console.error('[GOOGLE AUTH] Error stack:', error.stack);
+        res.redirect('/login?error=callback_failed&reason=' + encodeURIComponent(error.message));
     }
 });
 

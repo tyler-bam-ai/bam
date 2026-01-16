@@ -112,8 +112,51 @@ function Login() {
                 console.log('IPC result:', result);
 
                 if (result.ok && result.data?.url) {
-                    console.log('Redirecting to:', result.data.url);
-                    window.location.href = result.data.url;
+                    console.log('Opening Google OAuth in system browser:', result.data.url);
+
+                    // Open in system browser using Electron shell
+                    if (window.electronAPI?.shell?.openExternal) {
+                        await window.electronAPI.shell.openExternal(result.data.url);
+                        setLocalError('Complete sign-in in your browser, then return here.');
+
+                        // Start polling for auth completion
+                        let pollAttempts = 0;
+                        const pollInterval = setInterval(async () => {
+                            pollAttempts++;
+
+                            // Check localStorage for token (set by useAuth from electron-store)
+                            const token = localStorage.getItem('bam_token');
+                            if (token) {
+                                clearInterval(pollInterval);
+                                setLocalError(null);
+                                navigate('/dashboard');
+                                return;
+                            }
+
+                            // Also check electron-store directly
+                            if (window.electronAPI?.store?.get) {
+                                const storedToken = await window.electronAPI.store.get('authToken');
+                                if (storedToken) {
+                                    // Copy to localStorage and navigate
+                                    localStorage.setItem('bam_token', storedToken);
+                                    localStorage.setItem('token', storedToken);
+                                    clearInterval(pollInterval);
+                                    setLocalError(null);
+                                    navigate('/dashboard');
+                                    return;
+                                }
+                            }
+
+                            // Stop polling after 2 minutes
+                            if (pollAttempts > 120) {
+                                clearInterval(pollInterval);
+                                setLocalError('Sign-in timed out. Please try again.');
+                            }
+                        }, 1000);
+                    } else {
+                        // Fallback: navigate in-window (old behavior)
+                        window.location.href = result.data.url;
+                    }
                 } else if (result.error) {
                     setLocalError(`Failed to connect: ${result.error}`);
                 } else {

@@ -617,6 +617,54 @@ function createWindow() {
     }
   });
 
+  // Also handle will-redirect for OAuth (redirects may not trigger will-navigate)
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    console.log('[OAUTH] Will-redirect to:', url);
+
+    // Check if this is the success redirect with token
+    if (url.includes('/auth/success') && url.includes('token=')) {
+      console.log('[OAUTH] Intercepting auth success REDIRECT with token');
+      event.preventDefault();
+
+      try {
+        const urlObj = new URL(url);
+        const token = urlObj.searchParams.get('token');
+        const encodedUser = urlObj.searchParams.get('user');
+
+        if (token) {
+          console.log('[OAUTH] Token extracted from redirect URL');
+          store.set('authToken', token);
+
+          if (encodedUser) {
+            try {
+              const user = JSON.parse(decodeURIComponent(encodedUser));
+              store.set('currentUser', user);
+              console.log('[OAUTH] User stored:', user.email);
+            } catch (e) {
+              console.error('[OAUTH] Failed to parse user:', e);
+            }
+          }
+
+          // Navigate back to local app with token
+          if (app.isPackaged) {
+            const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+            mainWindow.loadFile(indexPath).then(() => {
+              mainWindow.webContents.executeJavaScript(`
+                localStorage.setItem('bam_token', '${token}');
+                localStorage.setItem('token', '${token}');
+                window.location.hash = '/dashboard';
+              `);
+            });
+          } else {
+            mainWindow.loadURL('http://localhost:3000/#/dashboard');
+          }
+        }
+      } catch (err) {
+        console.error('[OAUTH] Error extracting token from redirect URL:', err);
+      }
+    }
+  });
+
   // Also intercept did-navigate to handle post-OAuth state
   mainWindow.webContents.on('did-navigate', (event, url) => {
     console.log('[OAUTH] Did navigate to:', url);

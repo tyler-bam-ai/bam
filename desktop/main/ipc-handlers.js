@@ -82,6 +82,30 @@ function registerHandlers(ipcMain, mainWindow, store, desktopCapturerModule) {
     });
 
     // ============================================
+    // Shell - Open External URLs
+    // ============================================
+
+    ipcMain.handle('shell:open-external', async (event, url) => {
+        console.log('[SHELL] Opening external URL:', url);
+        const { shell } = require('electron');
+        await shell.openExternal(url);
+        return true;
+    });
+
+    // ============================================
+    // Store - Access electron-store values
+    // ============================================
+
+    ipcMain.handle('store:get', async (event, key) => {
+        return store.get(key, null);
+    });
+
+    ipcMain.handle('store:set', async (event, key, value) => {
+        store.set(key, value);
+        return true;
+    });
+
+    // ============================================
     // Screen Recording
     // ============================================
 
