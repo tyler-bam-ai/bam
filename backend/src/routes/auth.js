@@ -459,9 +459,13 @@ router.get('/google/callback', async (req, res) => {
         const encodedUser = encodeURIComponent(userJson);
 
         // Redirect to a special path that Electron intercepts
-        // The token is in the URL, Electron will extract it before rendering
-        console.log('[GOOGLE AUTH] Redirecting with token to special callback path');
-        res.redirect(`/auth/success?token=${token}&user=${encodedUser}`);
+        // Use full URL so Electron's will-navigate can properly intercept
+        const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+            : 'https://bam-production-c677.up.railway.app';
+
+        console.log('[GOOGLE AUTH] Redirecting with token to:', `${baseUrl}/auth/success`);
+        res.redirect(`${baseUrl}/auth/success?token=${token}&user=${encodedUser}`);
 
     } catch (error) {
         console.error('[GOOGLE AUTH] Callback error:', error);
