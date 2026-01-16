@@ -515,17 +515,45 @@ router.get('/google/callback', async (req, res) => {
                         max-width: 400px;
                         display: none;
                     }
-                    .copy-btn {
-                        margin-top: 12px;
-                        padding: 12px 32px;
+                    .open-app-btn {
+                        margin-top: 20px;
+                        padding: 16px 48px;
                         background: linear-gradient(135deg, #a855f7, #ec4899);
                         border: none;
                         color: white;
+                        border-radius: 12px;
+                        font-size: 18px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        text-decoration: none;
+                        display: inline-block;
+                    }
+                    .open-app-btn:hover { opacity: 0.9; transform: scale(1.02); }
+                    .token-box {
+                        margin-top: 20px;
+                        padding: 12px;
+                        background: rgba(0,0,0,0.3);
                         border-radius: 8px;
-                        font-size: 16px;
+                        font-family: monospace;
+                        font-size: 10px;
+                        word-break: break-all;
+                        max-width: 400px;
+                        max-height: 60px;
+                        overflow: hidden;
+                        color: #666;
+                    }
+                    .copy-btn {
+                        margin-top: 12px;
+                        padding: 10px 24px;
+                        background: rgba(255,255,255,0.1);
+                        border: 1px solid rgba(255,255,255,0.2);
+                        color: #888;
+                        border-radius: 8px;
+                        font-size: 14px;
                         cursor: pointer;
                     }
-                    .copy-btn:hover { opacity: 0.9; }
+                    .copy-btn:hover { background: rgba(255,255,255,0.15); }
+                    .success-msg { color: #10b981; display: none; margin-top: 10px; }
                 </style>
             </head>
             <body>
@@ -534,21 +562,42 @@ router.get('/google/callback', async (req, res) => {
                     <h1>Welcome, ${user.name}!</h1>
                     <p class="email">${user.email}</p>
                     <p>You're now signed in to BAM.ai</p>
+                    
+                    <a href="bam-auth://callback?token=${token}" class="open-app-btn" onclick="handleOpenApp()">
+                        Open BAM.ai App
+                    </a>
+                    
                     <div class="instruction">
-                        <p><strong>Return to the BAM.ai app</strong></p>
-                        <p>The app should automatically detect your login.</p>
-                        <p>You can close this browser tab.</p>
+                        <p>Click the button above to return to the app.</p>
+                        <p>If it doesn't work, copy the token below.</p>
                     </div>
+                    
                     <div class="token-box" id="tokenBox">${token}</div>
-                    <button class="copy-btn" onclick="copyToken()">Copy Token (if needed)</button>
+                    <button class="copy-btn" onclick="copyToken()">Copy Token</button>
+                    <p class="success-msg" id="successMsg">✓ Token copied!</p>
                 </div>
                 <script>
+                    function handleOpenApp() {
+                        // Show success message after clicking
+                        setTimeout(() => {
+                            document.querySelector('.instruction p').textContent = 'App should open now. You can close this tab.';
+                        }, 500);
+                    }
+                    
                     function copyToken() {
                         const token = document.getElementById('tokenBox').textContent;
                         navigator.clipboard.writeText(token).then(() => {
-                            alert('Token copied! Paste it in the app if needed.');
+                            document.getElementById('successMsg').style.display = 'block';
+                            setTimeout(() => {
+                                document.getElementById('successMsg').style.display = 'none';
+                            }, 3000);
                         });
                     }
+                    
+                    // Auto-try to open app after 1 second
+                    setTimeout(() => {
+                        window.location.href = 'bam-auth://callback?token=${token}';
+                    }, 1000);
                 </script>
             </body>
             </html>
