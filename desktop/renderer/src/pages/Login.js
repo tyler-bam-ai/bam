@@ -20,6 +20,22 @@ function Login() {
     const [showPassword, setShowPassword] = useState(false);
     const [localError, setLocalError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
+    const [pastedToken, setPastedToken] = useState('');
+    const [showTokenInput, setShowTokenInput] = useState(false);
+
+    // Handle manually pasted token from browser
+    const handleTokenPaste = () => {
+        if (pastedToken && pastedToken.length > 20) {
+            localStorage.setItem('bam_token', pastedToken);
+            localStorage.setItem('token', pastedToken);
+            if (window.electronAPI?.auth?.setToken) {
+                window.electronAPI.auth.setToken(pastedToken);
+            }
+            navigate('/dashboard');
+        } else {
+            setLocalError('Please paste a valid token');
+        }
+    };
 
     // Redirect if already logged in
     if (user) {
@@ -373,6 +389,45 @@ function Login() {
                         </svg>
                         {mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
                     </button>
+
+                    {/* Token Paste Fallback */}
+                    <button
+                        type="button"
+                        className="token-toggle-btn"
+                        onClick={() => setShowTokenInput(!showTokenInput)}
+                        style={{ marginTop: '12px', fontSize: '12px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}
+                    >
+                        {showTokenInput ? '▲ Hide token input' : '▼ Have a token? Paste it here'}
+                    </button>
+
+                    {showTokenInput && (
+                        <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                            <input
+                                type="text"
+                                value={pastedToken}
+                                onChange={(e) => setPastedToken(e.target.value)}
+                                placeholder="Paste your token here..."
+                                style={{
+                                    width: '100%',
+                                    padding: '10px',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    background: 'rgba(0,0,0,0.3)',
+                                    color: 'white',
+                                    marginBottom: '8px',
+                                    fontSize: '12px'
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onClick={handleTokenPaste}
+                                className="btn btn-secondary"
+                                style={{ width: '100%', padding: '8px' }}
+                            >
+                                Continue with Token
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Demo Accounts */}

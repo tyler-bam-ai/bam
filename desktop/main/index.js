@@ -37,25 +37,49 @@ function handleOAuthCallback(url) {
     const token = urlObj.searchParams.get('token');
 
     if (token) {
-      console.log('[OAUTH] Token received, storing...');
+      console.log('[OAUTH] Token received, storing in electron-store...');
       store.set('authToken', token);
 
-      // Reload the main window to dashboard
+      // Focus the main window
       if (mainWindow) {
-        if (app.isPackaged) {
-          const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
-          mainWindow.loadFile(indexPath).then(() => {
-            mainWindow.webContents.executeJavaScript(`
+        mainWindow.show();
+        mainWindow.focus();
+
+        // Wait for the page to be ready, then inject token
+        const injectToken = () => {
+          mainWindow.webContents.executeJavaScript(`
+            (function() {
+              console.log('[OAUTH] Injecting token into localStorage...');
               localStorage.setItem('bam_token', '${token}');
               localStorage.setItem('token', '${token}');
-              window.location.hash = '#/dashboard';
-              window.location.reload();
-            `);
+              console.log('[OAUTH] Token injected, navigating to dashboard...');
+              
+              // Check if on login page
+              if (window.location.hash === '' || window.location.hash === '#/' || window.location.hash === '#/login') {
+                window.location.hash = '#/dashboard';
+              }
+              
+              // Force reload to pick up the token
+              setTimeout(() => window.location.reload(), 100);
+              return true;
+            })();
+          `).then(result => {
+            console.log('[OAUTH] Token injection result:', result);
+          }).catch(err => {
+            console.error('[OAUTH] Token injection error:', err);
           });
+        };
+
+        // If the page is already loaded, inject immediately
+        if (!mainWindow.webContents.isLoading()) {
+          injectToken();
         } else {
-          mainWindow.loadURL('http://localhost:3000/#/dashboard');
+          // Wait for the page to finish loading
+          mainWindow.webContents.once('did-finish-load', injectToken);
         }
       }
+    } else {
+      console.error('[OAUTH] No token in callback URL');
     }
   } catch (error) {
     console.error('[OAUTH] Error handling callback:', error);

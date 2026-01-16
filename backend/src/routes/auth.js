@@ -73,6 +73,46 @@ router.post('/login', async (req, res) => {
     }
 });
 
+// Get current user from token (for session verification)
+router.get('/me', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'No token provided' });
+        }
+
+        const token = authHeader.substring(7);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+
+        // Get fresh user data from database
+        const user = await db.prepare(`
+            SELECT u.*, c.name as company_name 
+            FROM users u 
+            LEFT JOIN companies c ON u.company_id = c.id 
+            WHERE u.id = ?
+        `).get(decoded.id);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({
+            success: true,
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                companyId: user.company_id,
+                companyName: user.company_name
+            }
+        });
+    } catch (error) {
+        console.error('[AUTH /me] Error:', error.message);
+        res.status(401).json({ error: 'Invalid token' });
+    }
+});
+
 // Register
 router.post('/register', async (req, res) => {
     try {
