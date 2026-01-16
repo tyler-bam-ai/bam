@@ -167,6 +167,16 @@ async function initializePostgresSchema() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+
+        // Add google_id column if it doesn't exist (migration for existing tables)
+        try {
+            await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT`);
+            console.log('[DB] Added google_id column to users table (if missing)');
+        } catch (migrationErr) {
+            // Column might already exist, that's fine
+            console.log('[DB] google_id column migration:', migrationErr.message);
+        }
+
         console.log('[DB] PostgreSQL schema initialized');
     } finally {
         client.release();
