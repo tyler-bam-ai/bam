@@ -20,10 +20,16 @@ import {
     MessageCircle,
     Send,
     Clock,
-    Archive
+    Archive,
+    Film,
+    Trash2
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
+import { useClient } from '../contexts/ClientContext';
 import './KnowledgeProvider.css';
+
+// API URL - use Railway in production, localhost in dev
+const API_URL = process.env.REACT_APP_API_URL || 'https://bam-production-c677.up.railway.app';
 
 // Sub-pages
 function ScreenRecorder() {
@@ -303,17 +309,41 @@ const DEMO_FILES = [
 ];
 
 function DocumentUploader({ isDemoMode }) {
+    const { currentClient } = useClient();
     const [files, setFiles] = useState(isDemoMode ? DEMO_FILES : []);
     const [dragActive, setDragActive] = useState(false);
+    const [knowledgeItems, setKnowledgeItems] = useState([]);
     const inputRef = useRef(null);
 
+    // Load existing knowledge items for current client
     useEffect(() => {
         if (isDemoMode) {
             setFiles(DEMO_FILES);
         } else {
             setFiles([]);
+            if (currentClient?.id) {
+                loadKnowledgeItems();
+            }
         }
-    }, [isDemoMode]);
+    }, [isDemoMode, currentClient?.id]);
+
+    const loadKnowledgeItems = async () => {
+        if (!currentClient?.id) return;
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/knowledge/${currentClient.id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setKnowledgeItems(data.items?.filter(i => i.type === 'document') || []);
+            }
+        } catch (error) {
+            console.error('Failed to load knowledge items:', error);
+        }
+    };
 
     const handleDrag = (e) => {
         e.preventDefault();
@@ -348,20 +378,25 @@ function DocumentUploader({ isDemoMode }) {
             name: file.name,
             size: file.size,
             type: file.type,
-            status: 'pending', // pending, uploading, complete, error
+            status: 'pending',
             progress: 0
         }));
 
         setFiles(prev => [...prev, ...fileObjects]);
 
-        // Upload each file to backend
         fileObjects.forEach(fileObj => {
             uploadToBackend(fileObj);
         });
     };
 
     const uploadToBackend = async (fileObj) => {
-        // Update to uploading status
+        if (!currentClient?.id) {
+            setFiles(prev => prev.map(f =>
+                f.id === fileObj.id ? { ...f, status: 'error', error: 'No client selected' } : f
+            ));
+            return;
+        }
+
         setFiles(prev => prev.map(f =>
             f.id === fileObj.id ? { ...f, status: 'uploading', progress: 10 } : f
         ));
@@ -370,13 +405,14 @@ function DocumentUploader({ isDemoMode }) {
             const token = localStorage.getItem('token');
             const formData = new FormData();
             formData.append('file', fileObj.file);
+            formData.append('clientId', currentClient.id);
             formData.append('title', fileObj.name);
 
             setFiles(prev => prev.map(f =>
                 f.id === fileObj.id ? { ...f, progress: 30 } : f
             ));
 
-            const response = await fetch('http://localhost:3001/api/knowledge/upload', {
+            const response = await fetch(`${API_URL}/api/knowledge/document`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -391,11 +427,20 @@ function DocumentUploader({ isDemoMode }) {
             if (response.ok) {
                 const data = await response.json();
                 setFiles(prev => prev.map(f =>
-                    f.id === fileObj.id ? { ...f, status: 'complete', progress: 100, backendId: data.id } : f
+                    f.id === fileObj.id ? {
+                        ...f,
+                        status: 'complete',
+                        progress: 100,
+                        backendId: data.item?.id,
+                        wordCount: data.item?.wordCount
+                    } : f
                 ));
+                // Reload knowledge items
+                loadKnowledgeItems();
             } else {
+                const errorData = await response.json();
                 setFiles(prev => prev.map(f =>
-                    f.id === fileObj.id ? { ...f, status: 'error', progress: 0 } : f
+                    f.id === fileObj.id ? { ...f, status: 'error', progress: 0, error: errorData.error } : f
                 ));
             }
         } catch (error) {
@@ -417,7 +462,7 @@ function DocumentUploader({ isDemoMode }) {
     };
 
     const getFileIcon = (type) => {
-        if (type.includes('pdf')) return '📄';
+        if (type?.includes('pdf')) return '📄';
         if (type.includes('word') || type.includes('document')) return '📝';
         if (type.includes('sheet') || type.includes('excel')) return '📊';
         if (type.includes('presentation') || type.includes('powerpoint')) return '📽️';
@@ -499,27 +544,66 @@ const DEMO_RECORDINGS = [
 ];
 
 function VoiceRecorder({ isDemoMode }) {
+    const { currentClient } = useClient();
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [recordings, setRecordings] = useState(isDemoMode ? DEMO_RECORDINGS : []);
+    const [isProcessing, setIsProcessing] = useState(false);
     const mediaRecorderRef = useRef(null);
     const timerRef = useRef(null);
     const chunksRef = useRef([]);
+    const recordingTimeRef = useRef(0);
 
     useEffect(() => {
         if (isDemoMode) {
             setRecordings(DEMO_RECORDINGS);
         } else {
             setRecordings([]);
+            if (currentClient?.id) {
+                loadVoiceMemos();
+            }
         }
-    }, [isDemoMode]);
+    }, [isDemoMode, currentClient?.id]);
+
+    const loadVoiceMemos = async () => {
+        if (!currentClient?.id) return;
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/knowledge/${currentClient.id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const voiceItems = data.items?.filter(i => i.type === 'voice_memo') || [];
+                setRecordings(voiceItems.map(item => ({
+                    id: item.id,
+                    name: item.title,
+                    duration: 0,
+                    date: item.createdAt,
+                    wordCount: item.wordCount,
+                    preview: item.preview,
+                    fromBackend: true
+                })));
+            }
+        } catch (error) {
+            console.error('Failed to load voice memos:', error);
+        }
+    };
 
     async function startRecording() {
+        if (!currentClient?.id) {
+            alert('Please select a client first');
+            return;
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mediaRecorder = new MediaRecorder(stream);
             mediaRecorderRef.current = mediaRecorder;
             chunksRef.current = [];
+            recordingTimeRef.current = 0;
 
             mediaRecorder.ondataavailable = (e) => {
                 if (e.data.size > 0) {
@@ -532,46 +616,69 @@ function VoiceRecorder({ isDemoMode }) {
                 const url = URL.createObjectURL(blob);
                 const recordingId = Date.now();
                 const name = `Voice Memo ${recordings.length + 1}`;
+                const duration = recordingTimeRef.current;
 
                 // Add to local state immediately
                 setRecordings(prev => [...prev, {
                     id: recordingId,
                     url,
-                    duration: recordingTime,
+                    duration,
                     name,
                     date: new Date().toISOString(),
                     uploading: true
                 }]);
 
-                // Upload to backend
+                setIsProcessing(true);
+
+                // Upload to backend with transcription
                 try {
                     const token = localStorage.getItem('token');
+                    const openaiKey = localStorage.getItem('openai_api_key');
+
                     const formData = new FormData();
                     formData.append('audio', blob, `${name}.webm`);
+                    formData.append('clientId', currentClient.id);
                     formData.append('title', name);
-                    formData.append('duration', recordingTime.toString());
+                    formData.append('duration', duration.toString());
 
-                    const response = await fetch('http://localhost:3001/api/knowledge/audio', {
+                    const headers = {
+                        'Authorization': `Bearer ${token}`
+                    };
+
+                    if (openaiKey) {
+                        headers['x-openai-key'] = openaiKey;
+                    }
+
+                    const response = await fetch(`${API_URL}/api/knowledge/voice`, {
                         method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
+                        headers,
                         body: formData
                     });
 
                     if (response.ok) {
                         const data = await response.json();
                         setRecordings(prev => prev.map(r =>
-                            r.id === recordingId ? { ...r, uploading: false, backendId: data.id } : r
+                            r.id === recordingId ? {
+                                ...r,
+                                uploading: false,
+                                backendId: data.item?.id,
+                                wordCount: data.item?.wordCount,
+                                transcription: data.item?.transcription
+                            } : r
                         ));
                     } else {
+                        const errorData = await response.json();
                         setRecordings(prev => prev.map(r =>
-                            r.id === recordingId ? { ...r, uploading: false, error: true } : r
+                            r.id === recordingId ? { ...r, uploading: false, error: errorData.error || 'Upload failed' } : r
                         ));
                     }
                 } catch (error) {
                     console.error('Upload error:', error);
                     setRecordings(prev => prev.map(r =>
-                        r.id === recordingId ? { ...r, uploading: false, error: true } : r
+                        r.id === recordingId ? { ...r, uploading: false, error: 'Network error' } : r
                     ));
+                } finally {
+                    setIsProcessing(false);
                 }
 
                 stream.getTracks().forEach(track => track.stop());
@@ -581,7 +688,10 @@ function VoiceRecorder({ isDemoMode }) {
             setIsRecording(true);
 
             timerRef.current = setInterval(() => {
-                setRecordingTime(prev => prev + 1);
+                setRecordingTime(prev => {
+                    recordingTimeRef.current = prev + 1;
+                    return prev + 1;
+                });
             }, 1000);
         } catch (error) {
             console.error('Error starting recording:', error);
@@ -606,13 +716,22 @@ function VoiceRecorder({ isDemoMode }) {
 
     return (
         <div className="voice-recorder">
+            {!currentClient && (
+                <div className="no-client-warning">
+                    <AlertCircle size={24} />
+                    <p>Select a client from the sidebar to record voice memos</p>
+                </div>
+            )}
+
             <div className="voice-recorder-main">
-                <div className={`mic-button ${isRecording ? 'recording' : ''}`}>
+                <div className={`mic-button ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''}`}>
                     <button
                         className="mic-btn"
                         onClick={isRecording ? stopRecording : startRecording}
+                        disabled={!currentClient || isProcessing}
                     >
-                        {isRecording ? <Square size={32} /> : <Mic size={32} />}
+                        {isProcessing ? <Loader2 size={32} className="animate-spin" /> :
+                            isRecording ? <Square size={32} /> : <Mic size={32} />}
                     </button>
                     {isRecording && (
                         <div className="mic-waves">
@@ -626,22 +745,273 @@ function VoiceRecorder({ isDemoMode }) {
                         <span className="recording-dot"></span>
                         Recording... {formatTime(recordingTime)}
                     </div>
+                ) : isProcessing ? (
+                    <p className="mic-instruction">Transcribing with AI...</p>
                 ) : (
-                    <p className="mic-instruction">Click to start voice recording</p>
+                    <p className="mic-instruction">
+                        {currentClient ? 'Click to start voice recording' : 'Select a client first'}
+                    </p>
                 )}
             </div>
 
             {recordings.length > 0 && (
                 <div className="recordings-list">
-                    <h4>Recorded Memos</h4>
+                    <h4>Recorded Memos ({recordings.length})</h4>
                     {recordings.map((rec) => (
-                        <div key={rec.id} className="recording-item">
+                        <div key={rec.id} className={`recording-item ${rec.uploading ? 'uploading' : ''} ${rec.error ? 'error' : ''}`}>
                             <Mic size={20} />
                             <div className="recording-info">
                                 <span className="recording-name">{rec.name}</span>
-                                <span className="recording-duration">{formatTime(rec.duration)}</span>
+                                <span className="recording-meta">
+                                    {rec.duration > 0 && formatTime(rec.duration)}
+                                    {rec.wordCount && ` • ${rec.wordCount} words`}
+                                    {rec.uploading && ' • Transcribing...'}
+                                    {rec.error && ` • ${rec.error}`}
+                                </span>
+                                {rec.transcription && (
+                                    <p className="recording-transcription">{rec.transcription}</p>
+                                )}
                             </div>
-                            <audio controls src={rec.url} className="recording-audio"></audio>
+                            {rec.url && <audio controls src={rec.url} className="recording-audio"></audio>}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// VideoUploader component for video analysis with Gemini
+function VideoUploader({ isDemoMode }) {
+    const { currentClient } = useClient();
+    const [videos, setVideos] = useState([]);
+    const [dragActive, setDragActive] = useState(false);
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        if (!isDemoMode && currentClient?.id) {
+            loadVideos();
+        } else {
+            setVideos([]);
+        }
+    }, [isDemoMode, currentClient?.id]);
+
+    const loadVideos = async () => {
+        if (!currentClient?.id) return;
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/knowledge/${currentClient.id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const videoItems = data.items?.filter(i => i.type === 'video') || [];
+                setVideos(videoItems.map(item => ({
+                    id: item.id,
+                    name: item.title,
+                    wordCount: item.wordCount,
+                    preview: item.preview,
+                    createdAt: item.createdAt,
+                    status: 'complete'
+                })));
+            }
+        } catch (error) {
+            console.error('Failed to load videos:', error);
+        }
+    };
+
+    const handleDrag = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === 'dragenter' || e.type === 'dragover') {
+            setDragActive(true);
+        } else if (e.type === 'dragleave') {
+            setDragActive(false);
+        }
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFiles(Array.from(e.dataTransfer.files));
+        }
+    };
+
+    const handleChange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleFiles(Array.from(e.target.files));
+        }
+    };
+
+    const handleFiles = (files) => {
+        const videoFiles = files.filter(f => f.type.startsWith('video/'));
+
+        if (videoFiles.length === 0) {
+            alert('Please select video files (MP4, WebM, etc.)');
+            return;
+        }
+
+        videoFiles.forEach(file => uploadVideo(file));
+    };
+
+    const uploadVideo = async (file) => {
+        if (!currentClient?.id) {
+            alert('Please select a client first');
+            return;
+        }
+
+        const videoId = `video-${Date.now()}`;
+
+        // Add to state with uploading status
+        setVideos(prev => [...prev, {
+            id: videoId,
+            name: file.name,
+            size: file.size,
+            status: 'uploading',
+            progress: 0
+        }]);
+
+        try {
+            const token = localStorage.getItem('token');
+            const openrouterKey = localStorage.getItem('openrouter_api_key');
+            const openaiKey = localStorage.getItem('openai_api_key');
+
+            const formData = new FormData();
+            formData.append('video', file);
+            formData.append('clientId', currentClient.id);
+            formData.append('title', file.name);
+
+            const headers = {
+                'Authorization': `Bearer ${token}`
+            };
+
+            if (openrouterKey) {
+                headers['x-openrouter-key'] = openrouterKey;
+            }
+            if (openaiKey) {
+                headers['x-openai-key'] = openaiKey;
+            }
+
+            setVideos(prev => prev.map(v =>
+                v.id === videoId ? { ...v, status: 'analyzing', progress: 50 } : v
+            ));
+
+            const response = await fetch(`${API_URL}/api/knowledge/video`, {
+                method: 'POST',
+                headers,
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setVideos(prev => prev.map(v =>
+                    v.id === videoId ? {
+                        ...v,
+                        id: data.item?.id || videoId,
+                        status: 'complete',
+                        progress: 100,
+                        wordCount: data.item?.wordCount,
+                        preview: data.item?.preview,
+                        hasDescription: data.item?.hasDescription,
+                        hasTranscription: data.item?.hasTranscription
+                    } : v
+                ));
+            } else {
+                const errorData = await response.json();
+                setVideos(prev => prev.map(v =>
+                    v.id === videoId ? { ...v, status: 'error', error: errorData.error } : v
+                ));
+            }
+        } catch (error) {
+            console.error('Video upload error:', error);
+            setVideos(prev => prev.map(v =>
+                v.id === videoId ? { ...v, status: 'error', error: 'Network error' } : v
+            ));
+        }
+    };
+
+    const formatSize = (bytes) => {
+        if (!bytes) return '';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    };
+
+    return (
+        <div className="video-uploader">
+            {!currentClient && (
+                <div className="no-client-warning">
+                    <AlertCircle size={24} />
+                    <p>Select a client from the sidebar to upload videos</p>
+                </div>
+            )}
+
+            <div
+                className={`upload-zone video-upload-zone ${dragActive ? 'active' : ''}`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => currentClient && inputRef.current?.click()}
+                style={{ opacity: currentClient ? 1 : 0.5 }}
+            >
+                <input
+                    ref={inputRef}
+                    type="file"
+                    accept="video/*"
+                    multiple
+                    onChange={handleChange}
+                    style={{ display: 'none' }}
+                    disabled={!currentClient}
+                />
+                <Film size={48} className="upload-icon" />
+                <h3>Drop videos here or click to upload</h3>
+                <p>Videos will be analyzed by Gemini AI and transcribed</p>
+                <p className="upload-note">Supports MP4, WebM, MOV, and more</p>
+            </div>
+
+            {videos.length > 0 && (
+                <div className="upload-list">
+                    <h4>Uploaded Videos ({videos.length})</h4>
+                    {videos.map((video) => (
+                        <div key={video.id} className={`upload-item video-item ${video.status}`}>
+                            <span className="file-icon">🎬</span>
+                            <div className="file-info">
+                                <span className="file-name">{video.name}</span>
+                                <span className="file-meta">
+                                    {formatSize(video.size)}
+                                    {video.wordCount && ` • ${video.wordCount} words`}
+                                    {video.status === 'uploading' && ' • Uploading...'}
+                                    {video.status === 'analyzing' && ' • Analyzing with AI...'}
+                                    {video.hasDescription && ' • ✓ Description'}
+                                    {video.hasTranscription && ' • ✓ Transcription'}
+                                </span>
+                                {video.preview && (
+                                    <p className="file-preview">{video.preview}</p>
+                                )}
+                                {video.error && (
+                                    <span className="file-error">{video.error}</span>
+                                )}
+                            </div>
+                            <div className="file-status">
+                                {video.status === 'uploading' && (
+                                    <Loader2 size={20} className="animate-spin" />
+                                )}
+                                {video.status === 'analyzing' && (
+                                    <Loader2 size={20} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+                                )}
+                                {video.status === 'complete' && (
+                                    <CheckCircle size={20} className="status-complete" />
+                                )}
+                                {video.status === 'error' && (
+                                    <AlertCircle size={20} className="status-error" />
+                                )}
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -1023,6 +1393,10 @@ function KnowledgeProvider() {
                     <Upload size={18} />
                     Documents
                 </NavLink>
+                <NavLink to="/provider/video" className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}>
+                    <Film size={18} />
+                    Video Upload
+                </NavLink>
                 <NavLink to="/provider/voice" className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}>
                     <Mic size={18} />
                     Voice Memos
@@ -1043,6 +1417,7 @@ function KnowledgeProvider() {
                 <Routes>
                     <Route index element={<ScreenRecorder isDemoMode={isDemoMode} />} />
                     <Route path="upload" element={<DocumentUploader isDemoMode={isDemoMode} />} />
+                    <Route path="video" element={<VideoUploader isDemoMode={isDemoMode} />} />
                     <Route path="voice" element={<VoiceRecorder isDemoMode={isDemoMode} />} />
                     <Route path="api" element={<APIKeySetup isDemoMode={isDemoMode} />} />
                     <Route path="gaps" element={<KnowledgeGaps isDemoMode={isDemoMode} />} />

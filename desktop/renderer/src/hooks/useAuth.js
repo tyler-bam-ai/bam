@@ -46,22 +46,47 @@ export function AuthProvider({ children }) {
                 const token = localStorage.getItem('bam_token') || localStorage.getItem('token');
 
                 if (token) {
-                    // Verify token with backend
-                    const response = await fetch(`${API_URL}/api/auth/me`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    console.log('[AUTH] Token found, verifying with backend...');
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        setUser(data.user);
+                    // Use IPC proxy if available (bypasses CORS)
+                    let userData = null;
+
+                    if (window.electronAPI?.network?.fetch) {
+                        console.log('[AUTH] Using IPC proxy for token verification');
+                        const result = await window.electronAPI.network.fetch(`${API_URL}/api/auth/me`, {
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+
+                        console.log('[AUTH] IPC result:', result);
+
+                        if (result.ok && result.data?.user) {
+                            userData = result.data.user;
+                        }
+                    } else {
+                        // Fallback to regular fetch (dev mode)
+                        const response = await fetch(`${API_URL}/api/auth/me`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            userData = data.user;
+                        }
+                    }
+
+                    if (userData) {
+                        console.log('[AUTH] User verified:', userData.email);
+                        setUser(userData);
 
                         // Also store in Electron if available
                         if (window.electronAPI) {
-                            await window.electronAPI.auth.setUser(data.user);
+                            await window.electronAPI.auth.setUser(userData);
                             await window.electronAPI.auth.setToken(token);
                         }
                     } else {
                         // Invalid token, clean up
+                        console.log('[AUTH] Token verification failed, cleaning up');
                         localStorage.removeItem('bam_token');
                         localStorage.removeItem('token');
                     }
@@ -80,7 +105,7 @@ export function AuthProvider({ children }) {
         }
 
         loadUser();
-    }, [API_URL]);
+    }, []);
 
     const login = useCallback(async (email, password) => {
         setError(null);
