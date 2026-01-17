@@ -649,7 +649,19 @@ function VoiceRecorder({ isDemoMode }) {
 
                 try {
                     const token = localStorage.getItem('token');
-                    const openaiKey = localStorage.getItem('openai_api_key');
+
+                    // Try multiple sources for OpenAI key
+                    let openaiKey = localStorage.getItem('openai_api_key');
+
+                    // Fallback to electron-store if not in localStorage
+                    if (!openaiKey && window.electronAPI?.apiKeys?.get) {
+                        try {
+                            openaiKey = await window.electronAPI.apiKeys.get('openai');
+                            addLog(`Got key from electron-store: ${openaiKey ? 'yes' : 'no'}`);
+                        } catch (e) {
+                            addLog(`electron-store error: ${e.message}`);
+                        }
+                    }
 
                     addLog(`Token: ${token ? 'present' : 'missing'}`);
                     addLog(`OpenAI Key: ${openaiKey ? 'present' : 'missing'}`);
@@ -669,7 +681,8 @@ function VoiceRecorder({ isDemoMode }) {
                     const response = await fetch(uploadUrl, {
                         method: 'POST',
                         headers,
-                        body: formData
+                        body: formData,
+                        mode: 'cors'
                     });
 
                     addLog(`Response status: ${response.status}`);
