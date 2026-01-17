@@ -24,9 +24,9 @@ app.use(helmet({
 }));
 app.use(compression());
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production'
-        ? 'https://app.bam.ai'
-        : ['http://localhost:3000', 'http://localhost:3001', '*'],
+    // Allow all origins for Electron desktop apps (file:// protocol sends null origin)
+    // In production, requests from Electron come with origin: null or no origin
+    origin: true,
     credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
