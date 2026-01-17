@@ -60,6 +60,63 @@ router.post('/', authMiddleware, requireRole('bam_admin'), (req, res) => {
 });
 
 /**
+ * Update an existing client
+ * PUT /api/clients/:id
+ */
+router.put('/:id', authMiddleware, requireRole('bam_admin'), (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            companyName,
+            industry,
+            contactEmail,
+            contactName,
+            plan,
+            status
+        } = req.body;
+
+        // Check if client exists
+        const existing = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+        if (!existing) {
+            return res.status(404).json({ error: 'Client not found' });
+        }
+
+        // Update client fields
+        db.prepare(`
+            UPDATE companies
+            SET name = ?,
+                industry = ?,
+                contact_email = ?,
+                contact_name = ?,
+                plan = ?,
+                status = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(
+            companyName || existing.name,
+            industry || existing.industry,
+            contactEmail || existing.contact_email,
+            contactName || existing.contact_name,
+            plan || existing.plan,
+            status || existing.status,
+            id
+        );
+
+        const client = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+
+        console.log(`[CLIENTS] Updated client: ${client.name} (${id})`);
+
+        res.json({
+            success: true,
+            client: formatClient(client)
+        });
+    } catch (error) {
+        console.error('Update client error:', error);
+        res.status(500).json({ error: 'Failed to update client' });
+    }
+});
+
+/**
  * Create a new client from onboarding session
  * POST /api/clients/from-onboarding
  * This saves ALL onboarding data including responses AND full transcript
