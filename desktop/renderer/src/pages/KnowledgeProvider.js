@@ -23,6 +23,8 @@ import {
     Archive
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
+import { useClientContext } from '../contexts/ClientContext';
+import { API_URL } from '../config';
 import './KnowledgeProvider.css';
 
 // Sub-pages
@@ -361,8 +363,7 @@ function DocumentUploader({ isDemoMode }) {
     };
 
     const uploadToBackend = async (fileObj) => {
-        // Import API_URL and get client ID
-        const { API_URL } = require('../config');
+        // Use imported API_URL and get client ID
         const clientId = localStorage.getItem('selectedClientId') || localStorage.getItem('companyId') || 'demo';
 
         // Update to uploading status
@@ -516,13 +517,25 @@ function VoiceRecorder({ isDemoMode }) {
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [recordings, setRecordings] = useState(isDemoMode ? DEMO_RECORDINGS : []);
+    const [debugLog, setDebugLog] = useState([]);
+    const [audioLevel, setAudioLevel] = useState(0);
     const mediaRecorderRef = useRef(null);
     const timerRef = useRef(null);
     const chunksRef = useRef([]);
+    const audioContextRef = useRef(null);
+    const analyserRef = useRef(null);
+    const animationRef = useRef(null);
+    const canvasRef = useRef(null);
 
-    // Import API_URL and client context
-    const { API_URL } = require('../config');
-    const { selectedClient } = require('../contexts/ClientContext').useClientContext();
+    // Use imported API_URL and client context hook
+    const { selectedClient } = useClientContext();
+
+    // Add debug log entry
+    const addLog = (message, type = 'info') => {
+        const timestamp = new Date().toLocaleTimeString();
+        setDebugLog(prev => [...prev.slice(-10), { timestamp, message, type }]);
+        console.log(`[VOICE ${type.toUpperCase()}] ${message}`);
+    };
 
     useEffect(() => {
         if (isDemoMode) {
@@ -532,9 +545,64 @@ function VoiceRecorder({ isDemoMode }) {
         }
     }, [isDemoMode]);
 
+    // Draw waveform on canvas
+    const drawWaveform = () => {
+        if (!analyserRef.current || !canvasRef.current) return;
+
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const analyser = analyserRef.current;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        const draw = () => {
+            if (!isRecording) return;
+            animationRef.current = requestAnimationFrame(draw);
+
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate average level
+            const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+            setAudioLevel(average / 255);
+
+            // Clear canvas
+            ctx.fillStyle = 'rgba(26, 29, 41, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw waveform bars
+            const barWidth = (canvas.width / bufferLength) * 2.5;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
+
+                // Gradient color from purple to pink
+                const gradient = ctx.createLinearGradient(0, canvas.height - barHeight, 0, canvas.height);
+                gradient.addColorStop(0, '#a855f7');
+                gradient.addColorStop(1, '#ec4899');
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+                x += barWidth;
+            }
+        };
+
+        draw();
+    };
+
     async function startRecording() {
+        addLog('Starting recording...');
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            addLog('Microphone access granted');
+
+            // Set up audio analyzer for waveform
+            audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+            analyserRef.current = audioContextRef.current.createAnalyser();
+            analyserRef.current.fftSize = 256;
+            const source = audioContextRef.current.createMediaStreamSource(stream);
+            source.connect(analyserRef.current);
+
             const mediaRecorder = new MediaRecorder(stream);
             mediaRecorderRef.current = mediaRecorder;
             chunksRef.current = [];
@@ -546,10 +614,19 @@ function VoiceRecorder({ isDemoMode }) {
             };
 
             mediaRecorder.onstop = async () => {
+                addLog('Recording stopped, processing...');
+
+                // Stop waveform animation
+                if (animationRef.current) {
+                    cancelAnimationFrame(animationRef.current);
+                }
+
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
                 const url = URL.createObjectURL(blob);
                 const recordingId = Date.now();
                 const name = `Voice Memo ${recordings.length + 1}`;
+
+                addLog(`Created blob: ${(blob.size / 1024).toFixed(1)} KB`);
 
                 // Add to local state immediately with "transcribing" status
                 setRecordings(prev => [...prev, {
@@ -564,11 +641,18 @@ function VoiceRecorder({ isDemoMode }) {
 
                 // Get client ID (use selected client or default)
                 const clientId = selectedClient?.id || localStorage.getItem('companyId') || 'demo';
+                addLog(`Client ID: ${clientId}`);
 
                 // Upload to Railway backend for transcription
+                const uploadUrl = `${API_URL}/api/knowledge/voice`;
+                addLog(`Uploading to: ${uploadUrl}`);
+
                 try {
                     const token = localStorage.getItem('token');
                     const openaiKey = localStorage.getItem('openai_api_key');
+
+                    addLog(`Token: ${token ? 'present' : 'missing'}`);
+                    addLog(`OpenAI Key: ${openaiKey ? 'present' : 'missing'}`);
 
                     const formData = new FormData();
                     formData.append('audio', blob, `${name}.webm`);
@@ -580,14 +664,19 @@ function VoiceRecorder({ isDemoMode }) {
                     if (token) headers['Authorization'] = `Bearer ${token}`;
                     if (openaiKey) headers['X-OpenAI-Key'] = openaiKey;
 
-                    const response = await fetch(`${API_URL}/api/knowledge/voice`, {
+                    addLog('Sending request...');
+
+                    const response = await fetch(uploadUrl, {
                         method: 'POST',
                         headers,
                         body: formData
                     });
 
+                    addLog(`Response status: ${response.status}`);
+
                     if (response.ok) {
                         const data = await response.json();
+                        addLog(`Success! Transcribed ${data.item?.wordCount || 0} words`, 'success');
                         setRecordings(prev => prev.map(r =>
                             r.id === recordingId
                                 ? {
@@ -600,31 +689,40 @@ function VoiceRecorder({ isDemoMode }) {
                                 : r
                         ));
                     } else {
-                        const errorData = await response.json().catch(() => ({}));
+                        const errorText = await response.text();
+                        addLog(`Server error: ${response.status} - ${errorText}`, 'error');
                         setRecordings(prev => prev.map(r =>
                             r.id === recordingId
-                                ? { ...r, status: 'error', error: errorData.error || 'Upload failed' }
+                                ? { ...r, status: 'error', error: `HTTP ${response.status}` }
                                 : r
                         ));
                     }
                 } catch (error) {
-                    console.error('Upload error:', error);
+                    addLog(`Network error: ${error.message}`, 'error');
+                    addLog(`URL was: ${uploadUrl}`, 'error');
                     setRecordings(prev => prev.map(r =>
                         r.id === recordingId ? { ...r, status: 'error', error: error.message } : r
                     ));
                 }
 
                 stream.getTracks().forEach(track => track.stop());
+                if (audioContextRef.current) {
+                    audioContextRef.current.close();
+                }
             };
 
             mediaRecorder.start();
             setIsRecording(true);
+            addLog('Recording started');
+
+            // Start waveform visualization
+            setTimeout(drawWaveform, 100);
 
             timerRef.current = setInterval(() => {
                 setRecordingTime(prev => prev + 1);
             }, 1000);
         } catch (error) {
-            console.error('Error starting recording:', error);
+            addLog(`Microphone error: ${error.message}`, 'error');
             alert('Could not access microphone');
         }
     }
@@ -635,6 +733,7 @@ function VoiceRecorder({ isDemoMode }) {
             clearInterval(timerRef.current);
             setIsRecording(false);
             setRecordingTime(0);
+            setAudioLevel(0);
         }
     }
 
@@ -646,6 +745,7 @@ function VoiceRecorder({ isDemoMode }) {
 
     return (
         <div className="voice-recorder">
+            {/* Recording Section */}
             <div className="voice-recorder-main">
                 <div className={`mic-button ${isRecording ? 'recording' : ''}`}>
                     <button
@@ -671,6 +771,22 @@ function VoiceRecorder({ isDemoMode }) {
                 )}
             </div>
 
+            {/* Collapsible Debug Log - only show if there are errors */}
+            {debugLog.some(log => log.type === 'error') && (
+                <details className="debug-log-panel">
+                    <summary>⚠️ Debug Log (click to expand)</summary>
+                    <div className="debug-log-entries">
+                        {debugLog.map((log, i) => (
+                            <div key={i} className={`debug-log-entry ${log.type}`}>
+                                <span className="debug-time">{log.timestamp}</span>
+                                <span className="debug-msg">{log.message}</span>
+                            </div>
+                        ))}
+                    </div>
+                </details>
+            )}
+
+            {/* Recordings List */}
             {recordings.length > 0 && (
                 <div className="recordings-list">
                     <h4>Recorded Memos</h4>

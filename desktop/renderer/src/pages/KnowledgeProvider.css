@@ -797,6 +797,75 @@
     border: 1px solid var(--color-error);
 }
 
+/* Waveform Canvas */
+.waveform-canvas {
+    width: 100%;
+    max-width: 400px;
+    height: 100px;
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-tertiary);
+    margin-bottom: var(--space-4);
+}
+
+/* Audio Level Indicator */
+.audio-level-indicator {
+    margin-left: var(--space-2);
+    transition: all 0.1s ease-out;
+}
+
+/* Debug Log Panel */
+.debug-log-panel {
+    margin-top: var(--space-6);
+    padding: var(--space-4);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.debug-log-panel h5 {
+    margin: 0 0 var(--space-3);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.debug-log-entries {
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: var(--font-size-xs);
+}
+
+.debug-log-entry {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.debug-log-entry.info {
+    color: var(--color-text-secondary);
+}
+
+.debug-log-entry.success {
+    color: var(--color-success);
+}
+
+.debug-log-entry.error {
+    color: var(--color-error);
+}
+
+.debug-time {
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+}
+
+.debug-msg {
+    word-break: break-all;
+}
+
 /* ============================================
    API Setup
    ============================================ */

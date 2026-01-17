@@ -601,9 +601,9 @@ router.post('/completions/stream', optionalAuth, async (req, res) => {
         if (conversation && fullContent) {
             const userMessage = messages[messages.length - 1];
             if (userMessage) {
-                storeMessage(conversation.id, 'user', userMessage.content);
+                saveMessage(conversation.id, 'user', userMessage.content);
             }
-            storeMessage(conversation.id, 'assistant', fullContent);
+            saveMessage(conversation.id, 'assistant', fullContent);
         }
 
         console.log(`[STREAM] Completed streaming, total length: ${fullContent.length}`);
