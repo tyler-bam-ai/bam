@@ -15,7 +15,7 @@ const router = express.Router();
  * Create a new client (company)
  * POST /api/clients
  */
-router.post('/', authMiddleware, requireRole('bam_admin'), (req, res) => {
+router.post('/', authMiddleware, requireRole('bam_admin'), async (req, res) => {
     try {
         const {
             companyName,
@@ -42,12 +42,12 @@ router.post('/', authMiddleware, requireRole('bam_admin'), (req, res) => {
             pricePerSeat: 19.99
         });
 
-        db.prepare(`
+        await db.prepare(`
             INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(id, companyName, industry || null, plan, 'active', contactName || null, contactEmail, settings);
 
-        const client = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+        const client = await db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
 
         res.status(201).json({
             success: true,
@@ -63,7 +63,7 @@ router.post('/', authMiddleware, requireRole('bam_admin'), (req, res) => {
  * Update an existing client
  * PUT /api/clients/:id
  */
-router.put('/:id', authMiddleware, requireRole('bam_admin'), (req, res) => {
+router.put('/:id', authMiddleware, requireRole('bam_admin'), async (req, res) => {
     try {
         const { id } = req.params;
         const {
@@ -76,13 +76,13 @@ router.put('/:id', authMiddleware, requireRole('bam_admin'), (req, res) => {
         } = req.body;
 
         // Check if client exists
-        const existing = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+        const existing = await db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
         if (!existing) {
             return res.status(404).json({ error: 'Client not found' });
         }
 
         // Update client fields
-        db.prepare(`
+        await db.prepare(`
             UPDATE companies
             SET name = ?,
                 industry = ?,
@@ -102,7 +102,7 @@ router.put('/:id', authMiddleware, requireRole('bam_admin'), (req, res) => {
             id
         );
 
-        const client = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+        const client = await db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
 
         console.log(`[CLIENTS] Updated client: ${client.name} (${id})`);
 
@@ -121,7 +121,7 @@ router.put('/:id', authMiddleware, requireRole('bam_admin'), (req, res) => {
  * POST /api/clients/from-onboarding
  * This saves ALL onboarding data including responses AND full transcript
  */
-router.post('/from-onboarding', (req, res) => {
+router.post('/from-onboarding', async (req, res) => {
     try {
         const {
             companyName,
@@ -171,17 +171,20 @@ router.post('/from-onboarding', (req, res) => {
             }
         });
 
-        db.prepare(`
+        // AWAIT the database insert - critical for PostgreSQL
+        await db.prepare(`
             INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(id, companyName, industry || null, pricingPlan || 'starter', 'active', contactName || null, contactEmail || null, settings);
 
+        console.log(`[ONBOARDING] Company inserted: ${id}`);
+
         // Save individual responses to onboarding_responses table for easier querying
-        Object.entries(responses).forEach(([questionId, response]) => {
+        for (const [questionId, response] of Object.entries(responses)) {
             if (response && response.trim()) {
                 const responseId = uuidv4();
                 try {
-                    db.prepare(`
+                    await db.prepare(`
                         INSERT INTO onboarding_responses (id, company_id, section, question_id, response)
                         VALUES (?, ?, ?, ?, ?)
                     `).run(responseId, id, 'interview', questionId, response);
@@ -189,7 +192,7 @@ router.post('/from-onboarding', (req, res) => {
                     console.warn(`Failed to save response ${questionId}:`, e.message);
                 }
             }
-        });
+        }
 
         // Save the full transcript as a knowledge item for BAM Brains
         if (transcript && transcript.trim()) {
@@ -202,7 +205,7 @@ router.post('/from-onboarding', (req, res) => {
             });
 
             try {
-                db.prepare(`
+                await db.prepare(`
                     INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 `).run(
@@ -233,7 +236,7 @@ router.post('/from-onboarding', (req, res) => {
                 });
 
                 try {
-                    db.prepare(`
+                    await db.prepare(`
                         INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     `).run(
@@ -252,7 +255,8 @@ router.post('/from-onboarding', (req, res) => {
             }
         }
 
-        const client = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+        // AWAIT the SELECT for client data
+        const client = await db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
 
         console.log(`[ONBOARDING] Created new client: ${companyName} (${id}) with ${transcript ? 'transcript' : 'no transcript'}`);
 
@@ -268,6 +272,7 @@ router.post('/from-onboarding', (req, res) => {
         res.status(500).json({ error: 'Failed to create client from onboarding' });
     }
 });
+
 
 /**
  * Append transcript to existing client's knowledge base
