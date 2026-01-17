@@ -105,9 +105,14 @@ function AppShell() {
 
     // Get nav items and filter based on admin mode
     const baseNavItems = NAV_ITEMS[user?.role] || NAV_ITEMS.knowledge_consumer;
+    // When admin mode is OFF, hide Content Engine, Admin & Clients, and Onboarding
     const navItems = adminMode
         ? baseNavItems
-        : baseNavItems.filter(item => item.path !== '/content'); // Hide Content Engine when admin mode is OFF
+        : baseNavItems.filter(item =>
+            item.path !== '/content' &&
+            item.path !== '/admin' &&
+            item.path !== '/onboarding'
+        );
 
     const handleLogout = async () => {
         await logout();
@@ -160,20 +165,22 @@ function AppShell() {
                 </div>
             )}
 
-            {/* Selected Client Context Banner */}
+            {/* Selected Client Context Banner - Only on Content Engine, Brain Training, BAM Brains, Settings */}
             {isClientSelected && (
-                <div className="client-context-banner">
-                    <Building2 size={16} />
-                    <span>Viewing as: <strong>{selectedClient?.companyName || 'Unknown Client'}</strong></span>
-                    <button
-                        className="client-dismiss-btn"
-                        onClick={clearClient}
-                        title="Clear client selection"
-                    >
-                        <X size={14} />
-                    </button>
-                </div>
-            )}
+                ['/content', '/provider', '/consumer', '/settings'].some(p => location.pathname.startsWith(p))
+            ) && (
+                    <div className="client-context-banner">
+                        <Building2 size={16} />
+                        <span>Viewing as: <strong>{selectedClient?.companyName || 'Unknown Client'}</strong></span>
+                        <button
+                            className="client-dismiss-btn"
+                            onClick={clearClient}
+                            title="Clear client selection"
+                        >
+                            <X size={14} />
+                        </button>
+                    </div>
+                )}
 
             {/* Mobile sidebar overlay */}
             <div
@@ -216,7 +223,7 @@ function AppShell() {
 
                 <div className="sidebar-footer">
                     {!sidebarCollapsed && (
-                        <div className="user-info">
+                        <div className="user-info-row">
                             <div className="user-avatar">
                                 {user?.name?.charAt(0) || 'U'}
                             </div>
@@ -226,24 +233,26 @@ function AppShell() {
                             </div>
                         </div>
                     )}
-                    {/* Admin Mode Toggle */}
-                    {!sidebarCollapsed && (
-                        <label className="admin-mode-toggle" title="Admin Mode: Shows all features including unfinished ones">
-                            <input
-                                type="checkbox"
-                                checked={adminMode}
-                                onChange={toggleAdminMode}
-                            />
-                            <span className="admin-mode-label">Admin</span>
-                        </label>
-                    )}
-                    <button
-                        className="btn btn-ghost btn-icon logout-btn"
-                        onClick={handleLogout}
-                        title="Logout"
-                    >
-                        <LogOut size={18} />
-                    </button>
+                    {/* Bottom row: Admin toggle moved to right side */}
+                    <div className="sidebar-footer-row">
+                        {!sidebarCollapsed && (
+                            <label className="admin-mode-toggle" title="Admin Mode: Shows all features including unfinished ones">
+                                <input
+                                    type="checkbox"
+                                    checked={adminMode}
+                                    onChange={toggleAdminMode}
+                                />
+                                <span className="admin-mode-label">Admin</span>
+                            </label>
+                        )}
+                        <button
+                            className="btn btn-ghost btn-icon logout-btn"
+                            onClick={handleLogout}
+                            title="Logout"
+                        >
+                            <LogOut size={18} />
+                        </button>
+                    </div>
                 </div>
             </aside>
 

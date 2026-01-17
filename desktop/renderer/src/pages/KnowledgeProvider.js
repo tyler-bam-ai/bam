@@ -361,6 +361,10 @@ function DocumentUploader({ isDemoMode }) {
     };
 
     const uploadToBackend = async (fileObj) => {
+        // Import API_URL and get client ID
+        const { API_URL } = require('../config');
+        const clientId = localStorage.getItem('selectedClientId') || localStorage.getItem('companyId') || 'demo';
+
         // Update to uploading status
         setFiles(prev => prev.map(f =>
             f.id === fileObj.id ? { ...f, status: 'uploading', progress: 10 } : f
@@ -371,16 +375,18 @@ function DocumentUploader({ isDemoMode }) {
             const formData = new FormData();
             formData.append('file', fileObj.file);
             formData.append('title', fileObj.name);
+            formData.append('clientId', clientId);
 
             setFiles(prev => prev.map(f =>
                 f.id === fileObj.id ? { ...f, progress: 30 } : f
             ));
 
-            const response = await fetch('http://localhost:3001/api/knowledge/upload', {
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const response = await fetch(`${API_URL}/api/knowledge/document`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                },
+                headers,
                 body: formData
             });
 
@@ -391,17 +397,25 @@ function DocumentUploader({ isDemoMode }) {
             if (response.ok) {
                 const data = await response.json();
                 setFiles(prev => prev.map(f =>
-                    f.id === fileObj.id ? { ...f, status: 'complete', progress: 100, backendId: data.id } : f
+                    f.id === fileObj.id ? {
+                        ...f,
+                        status: 'complete',
+                        progress: 100,
+                        backendId: data.item?.id,
+                        preview: data.item?.preview,
+                        wordCount: data.item?.wordCount
+                    } : f
                 ));
             } else {
+                const errorData = await response.json().catch(() => ({}));
                 setFiles(prev => prev.map(f =>
-                    f.id === fileObj.id ? { ...f, status: 'error', progress: 0 } : f
+                    f.id === fileObj.id ? { ...f, status: 'error', progress: 0, error: errorData.error } : f
                 ));
             }
         } catch (error) {
             console.error('Upload error:', error);
             setFiles(prev => prev.map(f =>
-                f.id === fileObj.id ? { ...f, status: 'error', progress: 0 } : f
+                f.id === fileObj.id ? { ...f, status: 'error', progress: 0, error: error.message } : f
             ));
         }
     };
@@ -506,6 +520,10 @@ function VoiceRecorder({ isDemoMode }) {
     const timerRef = useRef(null);
     const chunksRef = useRef([]);
 
+    // Import API_URL and client context
+    const { API_URL } = require('../config');
+    const { selectedClient } = require('../contexts/ClientContext').useClientContext();
+
     useEffect(() => {
         if (isDemoMode) {
             setRecordings(DEMO_RECORDINGS);
@@ -533,44 +551,66 @@ function VoiceRecorder({ isDemoMode }) {
                 const recordingId = Date.now();
                 const name = `Voice Memo ${recordings.length + 1}`;
 
-                // Add to local state immediately
+                // Add to local state immediately with "transcribing" status
                 setRecordings(prev => [...prev, {
                     id: recordingId,
                     url,
                     duration: recordingTime,
                     name,
                     date: new Date().toISOString(),
-                    uploading: true
+                    status: 'transcribing',
+                    transcription: null
                 }]);
 
-                // Upload to backend
+                // Get client ID (use selected client or default)
+                const clientId = selectedClient?.id || localStorage.getItem('companyId') || 'demo';
+
+                // Upload to Railway backend for transcription
                 try {
                     const token = localStorage.getItem('token');
+                    const openaiKey = localStorage.getItem('openai_api_key');
+
                     const formData = new FormData();
                     formData.append('audio', blob, `${name}.webm`);
                     formData.append('title', name);
                     formData.append('duration', recordingTime.toString());
+                    formData.append('clientId', clientId);
 
-                    const response = await fetch('http://localhost:3001/api/knowledge/audio', {
+                    const headers = {};
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+                    if (openaiKey) headers['X-OpenAI-Key'] = openaiKey;
+
+                    const response = await fetch(`${API_URL}/api/knowledge/voice`, {
                         method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
+                        headers,
                         body: formData
                     });
 
                     if (response.ok) {
                         const data = await response.json();
                         setRecordings(prev => prev.map(r =>
-                            r.id === recordingId ? { ...r, uploading: false, backendId: data.id } : r
+                            r.id === recordingId
+                                ? {
+                                    ...r,
+                                    status: 'complete',
+                                    backendId: data.item?.id,
+                                    transcription: data.item?.transcription || '[Transcription complete]',
+                                    wordCount: data.item?.wordCount || 0
+                                }
+                                : r
                         ));
                     } else {
+                        const errorData = await response.json().catch(() => ({}));
                         setRecordings(prev => prev.map(r =>
-                            r.id === recordingId ? { ...r, uploading: false, error: true } : r
+                            r.id === recordingId
+                                ? { ...r, status: 'error', error: errorData.error || 'Upload failed' }
+                                : r
                         ));
                     }
                 } catch (error) {
                     console.error('Upload error:', error);
                     setRecordings(prev => prev.map(r =>
-                        r.id === recordingId ? { ...r, uploading: false, error: true } : r
+                        r.id === recordingId ? { ...r, status: 'error', error: error.message } : r
                     ));
                 }
 
@@ -635,12 +675,40 @@ function VoiceRecorder({ isDemoMode }) {
                 <div className="recordings-list">
                     <h4>Recorded Memos</h4>
                     {recordings.map((rec) => (
-                        <div key={rec.id} className="recording-item">
+                        <div key={rec.id} className={`recording-item ${rec.status || ''}`}>
                             <Mic size={20} />
                             <div className="recording-info">
                                 <span className="recording-name">{rec.name}</span>
                                 <span className="recording-duration">{formatTime(rec.duration)}</span>
                             </div>
+
+                            {/* Transcription Status */}
+                            {rec.status === 'transcribing' && (
+                                <div className="transcription-status transcribing">
+                                    <Loader2 size={16} className="spin" />
+                                    <span>Transcribing...</span>
+                                </div>
+                            )}
+
+                            {rec.status === 'complete' && rec.transcription && (
+                                <div className="transcription-status complete">
+                                    <CheckCircle size={16} />
+                                    <span className="transcription-preview">
+                                        {rec.transcription}
+                                    </span>
+                                    {rec.wordCount > 0 && (
+                                        <span className="word-count">{rec.wordCount} words</span>
+                                    )}
+                                </div>
+                            )}
+
+                            {rec.status === 'error' && (
+                                <div className="transcription-status error">
+                                    <AlertCircle size={16} />
+                                    <span>{rec.error || 'Transcription failed'}</span>
+                                </div>
+                            )}
+
                             <audio controls src={rec.url} className="recording-audio"></audio>
                         </div>
                     ))}
@@ -649,6 +717,7 @@ function VoiceRecorder({ isDemoMode }) {
         </div>
     );
 }
+
 
 function APIKeySetup() {
     const [services] = useState([
