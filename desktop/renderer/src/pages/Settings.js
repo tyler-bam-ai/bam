@@ -69,26 +69,58 @@ function Settings() {
 
     async function loadSettings() {
         const keyStatus = {};
+        const token = localStorage.getItem('bam_token') || localStorage.getItem('token');
+        const API_URL = process.env.REACT_APP_API_URL || 'https://bam-production-c677.up.railway.app';
 
+        // Try to load settings from user database first
+        if (token) {
+            try {
+                const response = await fetch(`${API_URL}/api/user/settings`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.settings) {
+                        // Load preferences from database
+                        if (data.settings.notifications) setNotifications(data.settings.notifications);
+                        if (data.settings.theme) setTheme(data.settings.theme);
+                        if (data.settings.voice) setVoiceSettings(data.settings.voice);
+
+                        // Check for API keys in database
+                        ['openai', 'openrouter', 'elevenlabs', 'google'].forEach(service => {
+                            if (data.settings[`api_key_${service}`]) {
+                                keyStatus[service] = '••••••••••••••••';
+                            }
+                        });
+                        console.log('[SETTINGS] Loaded settings from user database');
+                    }
+                }
+            } catch (err) {
+                console.log('[SETTINGS] Could not load from database, using local storage');
+            }
+        }
+
+        // Fallback to electron-store
         if (window.electronAPI) {
             const savedSettings = await window.electronAPI.settings.getAll();
-            if (savedSettings.notifications) setNotifications(savedSettings.notifications);
-            if (savedSettings.theme) setTheme(savedSettings.theme);
-            if (savedSettings.voice) setVoiceSettings(savedSettings.voice);
+            if (savedSettings.notifications && !Object.keys(keyStatus).length) setNotifications(savedSettings.notifications);
+            if (savedSettings.theme && !Object.keys(keyStatus).length) setTheme(savedSettings.theme);
+            if (savedSettings.voice && !Object.keys(keyStatus).length) setVoiceSettings(savedSettings.voice);
 
-            // Load API keys (only service names for security)
+            // Load API keys from electron store
             const keyServices = await window.electronAPI.apiKeys.list();
-            // Don't show actual keys, just indicate they're set
             keyServices.forEach(service => {
-                keyStatus[service] = '••••••••••••••••';
+                if (!keyStatus[service]) {
+                    keyStatus[service] = '••••••••••••••••';
+                }
             });
 
             // Check FFmpeg status
             checkFfmpegStatus();
         }
 
-        // Also check localStorage for API keys (fallback for dev mode)
-        const services = ['openai', 'anthropic', 'google'];
+        // Also check localStorage for API keys (final fallback)
+        const services = ['openai', 'openrouter', 'elevenlabs', 'google'];
         services.forEach(service => {
             const key = localStorage.getItem(`${service}_api_key`);
             if (key && !keyStatus[service]) {
@@ -145,7 +177,33 @@ function Settings() {
         if (key && !key.includes('•')) {
             console.log(`[SETTINGS] Saving ${service} key...`);
 
-            // Save to Electron store if available
+            // Get auth token
+            const token = localStorage.getItem('bam_token') || localStorage.getItem('token');
+            const API_URL = process.env.REACT_APP_API_URL || 'https://bam-production-c677.up.railway.app';
+
+            // Save to user-specific database endpoint (primary storage)
+            if (token) {
+                try {
+                    console.log(`[SETTINGS] Saving to user database...`);
+                    const response = await fetch(`${API_URL}/api/user/api-keys/${service}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ key })
+                    });
+                    if (response.ok) {
+                        console.log(`[SETTINGS] User database save SUCCESS`);
+                    } else {
+                        console.error(`[SETTINGS] User database save failed: ${response.status}`);
+                    }
+                } catch (err) {
+                    console.error('[SETTINGS] User database save FAILED:', err);
+                }
+            }
+
+            // Save to Electron store if available (local backup)
             if (window.electronAPI?.apiKeys?.set) {
                 console.log(`[SETTINGS] Saving to electron-store: apikeys.${service}`);
                 try {
@@ -154,32 +212,15 @@ function Settings() {
                 } catch (err) {
                     console.error(`[SETTINGS] electron-store save FAILED:`, err);
                 }
-            } else {
-                console.log(`[SETTINGS] electron-store NOT available`);
             }
 
             // Also save to localStorage as fallback
             console.log(`[SETTINGS] Saving to localStorage: ${service}_api_key`);
             try {
                 localStorage.setItem(`${service}_api_key`, key);
-                // Verify it was saved
-                const verify = localStorage.getItem(`${service}_api_key`);
-                console.log(`[SETTINGS] localStorage verify: saved=${!!verify}, length=${verify?.length}`);
+                console.log(`[SETTINGS] localStorage save SUCCESS`);
             } catch (err) {
                 console.error(`[SETTINGS] localStorage save FAILED:`, err);
-            }
-
-            // Save to backend API for server-side access
-            try {
-                console.log(`[SETTINGS] Saving to backend API...`);
-                const response = await fetch('http://localhost:3001/api/system/api-keys', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ service, key })
-                });
-                console.log(`[SETTINGS] Backend API response: ${response.status}`);
-            } catch (err) {
-                console.error('[SETTINGS] Failed to save API key to backend:', err);
             }
 
             setApiKeys(prev => ({

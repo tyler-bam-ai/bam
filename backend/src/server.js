@@ -120,6 +120,7 @@ async function startServer() {
         const voiceAIRoutes = require('./routes/voiceAI');
         const systemRoutes = require('./routes/system');
         const transcriptionRoutes = require('./routes/transcription');
+        const userSettingsRoutes = require('./routes/user-settings');
 
         // API Routes
         app.use('/api/auth', authRoutes);
@@ -137,6 +138,7 @@ async function startServer() {
         app.use('/api/voice-ai', voiceAIRoutes);
         app.use('/api/system', systemRoutes);
         app.use('/api/transcription', transcriptionRoutes);
+        app.use('/api/user', userSettingsRoutes);
 
         // Register 404 and error handlers last
         register404Handler();

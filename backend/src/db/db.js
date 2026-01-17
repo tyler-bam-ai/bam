@@ -172,6 +172,16 @@ async function initializePostgresSchema() {
                 value TEXT,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS user_settings (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, key)
+            );
         `);
 
         // Add google_id column if it doesn't exist (migration for existing tables)
@@ -372,6 +382,17 @@ function initializeSchema() {
             key TEXT PRIMARY KEY,
             value TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- User-specific settings
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, key)
         );
 
         -- Tasks table
