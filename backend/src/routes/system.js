@@ -122,8 +122,9 @@ router.get('/health', (req, res) => {
 
 const fs = require('fs');
 const path = require('path');
+const { db } = require('../db/db');
 
-// API keys file path
+// API keys file path (local fallback)
 const API_KEYS_FILE = path.join(__dirname, '../../data/api-keys.json');
 
 // Ensure data directory exists
@@ -135,10 +136,46 @@ function ensureDataDir() {
 }
 
 /**
+ * Get an API key - checks database first (Railway), then local file
+ * Used by other services as a fallback when client doesn't provide key
+ */
+async function getStoredApiKey(service) {
+    try {
+        // Check database first (Railway persistence)
+        const dbResult = await db.prepare(
+            'SELECT value FROM settings WHERE key = ?'
+        ).get(`api_key_${service}`);
+
+        if (dbResult?.value) {
+            return dbResult.value;
+        }
+
+        // Fallback to local file
+        if (fs.existsSync(API_KEYS_FILE)) {
+            const keys = JSON.parse(fs.readFileSync(API_KEYS_FILE, 'utf8'));
+            if (keys[service]) {
+                return keys[service];
+            }
+        }
+
+        // Fallback to environment variable
+        const envKey = process.env[`${service.toUpperCase()}_API_KEY`];
+        if (envKey) {
+            return envKey;
+        }
+
+        return null;
+    } catch (error) {
+        console.error(`[System] Error getting stored API key for ${service}:`, error);
+        return null;
+    }
+}
+
+/**
  * Save an API key
  * POST /api/system/api-keys
  */
-router.post('/api-keys', (req, res) => {
+router.post('/api-keys', async (req, res) => {
     try {
         const { service, key } = req.body;
 
@@ -146,19 +183,31 @@ router.post('/api-keys', (req, res) => {
             return res.status(400).json({ error: 'Service and key are required' });
         }
 
-        ensureDataDir();
-
-        // Load existing keys
-        let keys = {};
-        if (fs.existsSync(API_KEYS_FILE)) {
-            keys = JSON.parse(fs.readFileSync(API_KEYS_FILE, 'utf8'));
+        // Save to database (Railway persistence)
+        try {
+            await db.prepare(`
+                INSERT OR REPLACE INTO settings (key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+            `).run(`api_key_${service}`, key);
+            console.log(`[System] Saved API key for ${service} to database`);
+        } catch (dbError) {
+            console.error(`[System] Database save failed:`, dbError);
         }
 
-        // Save new key
-        keys[service] = key;
-        fs.writeFileSync(API_KEYS_FILE, JSON.stringify(keys, null, 2));
+        // Also save to local file as backup
+        try {
+            ensureDataDir();
+            let keys = {};
+            if (fs.existsSync(API_KEYS_FILE)) {
+                keys = JSON.parse(fs.readFileSync(API_KEYS_FILE, 'utf8'));
+            }
+            keys[service] = key;
+            fs.writeFileSync(API_KEYS_FILE, JSON.stringify(keys, null, 2));
+            console.log(`[System] Saved API key for ${service} to file`);
+        } catch (fileError) {
+            console.error(`[System] File save failed:`, fileError);
+        }
 
-        console.log(`[System] Saved API key for service: ${service}`);
         res.json({ success: true, service });
     } catch (error) {
         console.error('[System] Save API key error:', error);
@@ -170,20 +219,59 @@ router.post('/api-keys', (req, res) => {
  * List configured API key services (not the actual keys)
  * GET /api/system/api-keys
  */
-router.get('/api-keys', (req, res) => {
+router.get('/api-keys', async (req, res) => {
     try {
-        if (!fs.existsSync(API_KEYS_FILE)) {
-            return res.json({ services: [] });
+        const services = new Set();
+
+        // Check database
+        try {
+            const dbResults = await db.prepare(
+                'SELECT key FROM settings WHERE key LIKE ?'
+            ).all('api_key_%');
+
+            dbResults.forEach(row => {
+                const service = row.key.replace('api_key_', '');
+                services.add(service);
+            });
+        } catch (dbError) {
+            console.error('[System] Database read failed:', dbError);
         }
 
-        const keys = JSON.parse(fs.readFileSync(API_KEYS_FILE, 'utf8'));
-        const services = Object.keys(keys).filter(k => keys[k]);
+        // Check local file
+        if (fs.existsSync(API_KEYS_FILE)) {
+            const keys = JSON.parse(fs.readFileSync(API_KEYS_FILE, 'utf8'));
+            Object.keys(keys).filter(k => keys[k]).forEach(k => services.add(k));
+        }
 
-        res.json({ services });
+        res.json({ services: Array.from(services) });
     } catch (error) {
         console.error('[System] List API keys error:', error);
         res.status(500).json({ error: 'Failed to list API keys' });
     }
 });
 
+/**
+ * Get a specific API key (for server-side use)
+ * GET /api/system/api-keys/:service
+ * NOTE: This should only be called internally, not exposed to clients
+ */
+router.get('/api-keys/:service', async (req, res) => {
+    try {
+        const { service } = req.params;
+        const key = await getStoredApiKey(service);
+
+        if (key) {
+            res.json({ service, hasKey: true, key });
+        } else {
+            res.json({ service, hasKey: false });
+        }
+    } catch (error) {
+        console.error('[System] Get API key error:', error);
+        res.status(500).json({ error: 'Failed to get API key' });
+    }
+});
+
+// Export helper function for use by other services
 module.exports = router;
+module.exports.getStoredApiKey = getStoredApiKey;
+

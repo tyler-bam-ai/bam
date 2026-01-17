@@ -166,6 +166,12 @@ async function initializePostgresSchema() {
                 content TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         `);
 
         // Add google_id column if it doesn't exist (migration for existing tables)
@@ -358,6 +364,13 @@ function initializeSchema() {
             status TEXT DEFAULT 'processing',
             metadata TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Settings (for API keys and config)
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
