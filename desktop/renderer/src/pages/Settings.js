@@ -464,11 +464,14 @@ function Settings() {
 
                             <div className="api-key-item">
                                 <div className="api-key-header">
-                                    <span className="api-key-name">OpenRouter API Key</span>
+                                    <span className="api-key-name">OpenRouter API Key <span style={{ color: 'var(--color-primary)', fontSize: '0.75rem' }}>(Video Analysis)</span></span>
                                     <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="api-key-link">
                                         Get API Key →
                                     </a>
                                 </div>
+                                <p className="api-key-description" style={{ fontSize: '0.8rem', color: 'var(--color-text-tertiary)', marginBottom: '8px' }}>
+                                    Required for Brain Training video analysis - Uses Gemini to analyze video content
+                                </p>
                                 <div className="api-key-input-wrapper">
                                     <input
                                         type={showKeys.openrouter ? 'text' : 'password'}
