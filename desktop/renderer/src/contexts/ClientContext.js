@@ -73,15 +73,4 @@ export function useClientContext() {
     return context;
 }
 
-// Alias for backward compatibility
-export function useClient() {
-    const { selectedClient, selectClient, clearClient, isClientSelected } = useClientContext();
-    return {
-        currentClient: selectedClient,
-        selectClient,
-        clearClient,
-        isClientSelected
-    };
-}
-
 export default ClientContext;

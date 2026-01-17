@@ -15,7 +15,7 @@ const router = express.Router();
  * Create a new client (company)
  * POST /api/clients
  */
-router.post('/', authMiddleware, requireRole('bam_admin'), async (req, res) => {
+router.post('/', authMiddleware, requireRole('bam_admin'), (req, res) => {
     try {
         const {
             companyName,
@@ -42,12 +42,12 @@ router.post('/', authMiddleware, requireRole('bam_admin'), async (req, res) => {
             pricePerSeat: 19.99
         });
 
-        await db.prepare(`
+        db.prepare(`
             INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(id, companyName, industry || null, plan, 'active', contactName || null, contactEmail, settings);
 
-        const client = await db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+        const client = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
 
         res.status(201).json({
             success: true,
@@ -60,68 +60,11 @@ router.post('/', authMiddleware, requireRole('bam_admin'), async (req, res) => {
 });
 
 /**
- * Update an existing client
- * PUT /api/clients/:id
- */
-router.put('/:id', authMiddleware, requireRole('bam_admin'), async (req, res) => {
-    try {
-        const { id } = req.params;
-        const {
-            companyName,
-            industry,
-            contactEmail,
-            contactName,
-            plan,
-            status
-        } = req.body;
-
-        // Check if client exists
-        const existing = await db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
-        if (!existing) {
-            return res.status(404).json({ error: 'Client not found' });
-        }
-
-        // Update client fields
-        await db.prepare(`
-            UPDATE companies
-            SET name = ?,
-                industry = ?,
-                contact_email = ?,
-                contact_name = ?,
-                plan = ?,
-                status = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        `).run(
-            companyName || existing.name,
-            industry || existing.industry,
-            contactEmail || existing.contact_email,
-            contactName || existing.contact_name,
-            plan || existing.plan,
-            status || existing.status,
-            id
-        );
-
-        const client = await db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
-
-        console.log(`[CLIENTS] Updated client: ${client.name} (${id})`);
-
-        res.json({
-            success: true,
-            client: formatClient(client)
-        });
-    } catch (error) {
-        console.error('Update client error:', error);
-        res.status(500).json({ error: 'Failed to update client' });
-    }
-});
-
-/**
  * Create a new client from onboarding session
  * POST /api/clients/from-onboarding
  * This saves ALL onboarding data including responses AND full transcript
  */
-router.post('/from-onboarding', async (req, res) => {
+router.post('/from-onboarding', (req, res) => {
     try {
         const {
             companyName,
@@ -171,20 +114,17 @@ router.post('/from-onboarding', async (req, res) => {
             }
         });
 
-        // AWAIT the database insert - critical for PostgreSQL
-        await db.prepare(`
+        db.prepare(`
             INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(id, companyName, industry || null, pricingPlan || 'starter', 'active', contactName || null, contactEmail || null, settings);
 
-        console.log(`[ONBOARDING] Company inserted: ${id}`);
-
         // Save individual responses to onboarding_responses table for easier querying
-        for (const [questionId, response] of Object.entries(responses)) {
+        Object.entries(responses).forEach(([questionId, response]) => {
             if (response && response.trim()) {
                 const responseId = uuidv4();
                 try {
-                    await db.prepare(`
+                    db.prepare(`
                         INSERT INTO onboarding_responses (id, company_id, section, question_id, response)
                         VALUES (?, ?, ?, ?, ?)
                     `).run(responseId, id, 'interview', questionId, response);
@@ -192,7 +132,7 @@ router.post('/from-onboarding', async (req, res) => {
                     console.warn(`Failed to save response ${questionId}:`, e.message);
                 }
             }
-        }
+        });
 
         // Save the full transcript as a knowledge item for BAM Brains
         if (transcript && transcript.trim()) {
@@ -205,7 +145,7 @@ router.post('/from-onboarding', async (req, res) => {
             });
 
             try {
-                await db.prepare(`
+                db.prepare(`
                     INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 `).run(
@@ -236,7 +176,7 @@ router.post('/from-onboarding', async (req, res) => {
                 });
 
                 try {
-                    await db.prepare(`
+                    db.prepare(`
                         INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     `).run(
@@ -255,8 +195,7 @@ router.post('/from-onboarding', async (req, res) => {
             }
         }
 
-        // AWAIT the SELECT for client data
-        const client = await db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+        const client = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
 
         console.log(`[ONBOARDING] Created new client: ${companyName} (${id}) with ${transcript ? 'transcript' : 'no transcript'}`);
 
@@ -272,7 +211,6 @@ router.post('/from-onboarding', async (req, res) => {
         res.status(500).json({ error: 'Failed to create client from onboarding' });
     }
 });
-
 
 /**
  * Append transcript to existing client's knowledge base

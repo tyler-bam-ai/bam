@@ -1333,8 +1333,14 @@ function Onboarding() {
             transcript: finalTranscript // Include full interview transcript
         };
         console.log('[SAVE] Payload transcript length:', payload.transcript.length);
+        console.log('[SAVE] API_URL:', API_URL);
+        console.log('[SAVE] Full URL:', `${API_URL}/api/clients/from-onboarding`);
+        console.log('[SAVE] Payload companyName:', payload.companyName);
 
         try {
+            setDebugMessage(`📡 Calling API: ${API_URL}/api/clients/from-onboarding`);
+            console.log('[SAVE] Making fetch request...');
+
             const response = await retryFetch(`${API_URL}/api/clients/from-onboarding`, {
                 method: 'POST',
                 headers: {
@@ -1343,7 +1349,11 @@ function Onboarding() {
                 body: JSON.stringify(payload)
             }, 3, 2000); // Retry 3 times with 2-second delay
 
+            console.log('[SAVE] Response status:', response.status);
+            console.log('[SAVE] Response ok:', response.ok);
+
             const data = await response.json();
+            console.log('[SAVE] Response data:', JSON.stringify(data).substring(0, 200));
 
             if (response.ok && data.success) {
                 setClientSaved(true);
@@ -1356,10 +1366,13 @@ function Onboarding() {
                 // Clear local autosave since we've saved to DB
                 localStorage.removeItem(AUTOSAVE_KEY);
             } else {
+                console.error('[SAVE] API returned error:', data);
                 throw new Error(data.error || 'Failed to save client');
             }
         } catch (error) {
-            console.error('Save client error:', error);
+            console.error('[SAVE] Save client error:', error);
+            console.error('[SAVE] Error name:', error.name);
+            console.error('[SAVE] Error message:', error.message);
             // Use toast instead of alert - alert blocks focus on Windows
             showToast('Error saving client: ' + error.message, 'error', 5000);
             setDebugMessage('❌ Error saving client: ' + error.message);

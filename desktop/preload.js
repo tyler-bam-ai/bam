@@ -12,11 +12,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
         setToken: (token) => ipcRenderer.invoke('auth:set-token', token)
     },
 
-    // Network Proxy - bypasses renderer CORS restrictions
-    network: {
-        fetch: (url, options) => ipcRenderer.invoke('network:fetch', url, options)
-    },
-
     // Screen Recording
     recording: {
         getSources: () => ipcRenderer.invoke('recording:get-sources'),
@@ -55,17 +50,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     app: {
         getVersion: () => ipcRenderer.invoke('app:get-version'),
         getPlatform: () => ipcRenderer.invoke('app:get-platform')
-    },
-
-    // Shell - for opening external URLs
-    shell: {
-        openExternal: (url) => ipcRenderer.invoke('shell:open-external', url)
-    },
-
-    // Store - for accessing electron-store values
-    store: {
-        get: (key) => ipcRenderer.invoke('store:get', key),
-        set: (key, value) => ipcRenderer.invoke('store:set', key, value)
     },
 
     // Update Status Listener

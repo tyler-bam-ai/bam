@@ -166,33 +166,7 @@ async function initializePostgresSchema() {
                 content TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS user_settings (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id, key)
-            );
         `);
-
-        // Add google_id column if it doesn't exist (migration for existing tables)
-        try {
-            await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT`);
-            console.log('[DB] Added google_id column to users table (if missing)');
-        } catch (migrationErr) {
-            // Column might already exist, that's fine
-            console.log('[DB] google_id column migration:', migrationErr.message);
-        }
-
         console.log('[DB] PostgreSQL schema initialized');
     } finally {
         client.release();
@@ -377,24 +351,6 @@ function initializeSchema() {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
-        -- Settings (for API keys and config)
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        );
-
-        -- User-specific settings
-        CREATE TABLE IF NOT EXISTS user_settings (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            key TEXT NOT NULL,
-            value TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, key)
-        );
-
         -- Tasks table
         CREATE TABLE IF NOT EXISTS tasks (
             id TEXT PRIMARY KEY,
@@ -576,21 +532,6 @@ function initializeSchema() {
         CREATE INDEX IF NOT EXISTS idx_posts_company ON scheduled_posts(company_id);
         CREATE INDEX IF NOT EXISTS idx_social_accounts_company ON social_accounts(company_id);
     `);
-
-    // Migration: Add google_id column if it doesn't exist (for existing databases)
-    try {
-        // Check if column exists by trying to select from it
-        db.exec(`SELECT google_id FROM users LIMIT 1`);
-    } catch (e) {
-        // Column doesn't exist, add it
-        console.log('[DB] Adding google_id column to users table...');
-        try {
-            db.exec(`ALTER TABLE users ADD COLUMN google_id TEXT`);
-            console.log('[DB] ✅ google_id column added');
-        } catch (alterErr) {
-            console.log('[DB] google_id column already exists or error:', alterErr.message);
-        }
-    }
 
     saveDatabase();
     console.log('✅ Database schema initialized');

@@ -105,11 +105,9 @@ function AppShell() {
 
     // Get nav items and filter based on admin mode
     const baseNavItems = NAV_ITEMS[user?.role] || NAV_ITEMS.knowledge_consumer;
-    // When admin mode is OFF, hide: Content Engine, Admin & Clients, Onboarding
-    const adminOnlyPaths = ['/content', '/admin', '/onboarding'];
     const navItems = adminMode
         ? baseNavItems
-        : baseNavItems.filter(item => !adminOnlyPaths.includes(item.path));
+        : baseNavItems.filter(item => item.path !== '/content'); // Hide Content Engine when admin mode is OFF
 
     const handleLogout = async () => {
         await logout();
@@ -162,8 +160,8 @@ function AppShell() {
                 </div>
             )}
 
-            {/* Selected Client Context Banner - Only show on specific tabs */}
-            {isClientSelected && ['/content', '/provider', '/consumer', '/settings'].some(path => location.pathname.startsWith(path)) && (
+            {/* Selected Client Context Banner */}
+            {isClientSelected && (
                 <div className="client-context-banner">
                     <Building2 size={16} />
                     <span>Viewing as: <strong>{selectedClient?.companyName || 'Unknown Client'}</strong></span>
@@ -217,7 +215,6 @@ function AppShell() {
                 </nav>
 
                 <div className="sidebar-footer">
-                    {/* User info row - full width */}
                     {!sidebarCollapsed && (
                         <div className="user-info">
                             <div className="user-avatar">
@@ -229,26 +226,24 @@ function AppShell() {
                             </div>
                         </div>
                     )}
-                    {/* Bottom row: spacer + admin toggle + logout button */}
-                    <div className="sidebar-footer-actions">
-                        {!sidebarCollapsed && (
-                            <label className="admin-mode-toggle" title="Admin Mode: Shows all features including unfinished ones">
-                                <input
-                                    type="checkbox"
-                                    checked={adminMode}
-                                    onChange={toggleAdminMode}
-                                />
-                                <span className="admin-mode-label">Admin</span>
-                            </label>
-                        )}
-                        <button
-                            className="btn btn-ghost btn-icon logout-btn"
-                            onClick={handleLogout}
-                            title="Logout"
-                        >
-                            <LogOut size={18} />
-                        </button>
-                    </div>
+                    {/* Admin Mode Toggle */}
+                    {!sidebarCollapsed && (
+                        <label className="admin-mode-toggle" title="Admin Mode: Shows all features including unfinished ones">
+                            <input
+                                type="checkbox"
+                                checked={adminMode}
+                                onChange={toggleAdminMode}
+                            />
+                            <span className="admin-mode-label">Admin</span>
+                        </label>
+                    )}
+                    <button
+                        className="btn btn-ghost btn-icon logout-btn"
+                        onClick={handleLogout}
+                        title="Logout"
+                    >
+                        <LogOut size={18} />
+                    </button>
                 </div>
             </aside>
 

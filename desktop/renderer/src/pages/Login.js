@@ -3,39 +3,20 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Mail, Lock, ArrowRight, Eye, EyeOff, User, Building } from 'lucide-react';
 import bamLogoGradient from '../assets/bam-icon-gradient.png';
+import { API_URL } from '../config';
 import './Login.css';
-
-// Railway backend for packaged app - uses cloud PostgreSQL
-const API_URL = 'https://bam-production-c677.up.railway.app';
 
 function Login() {
     const { user, login, register, loading, error } = useAuth();
     const navigate = useNavigate();
 
-    const [mode, setMode] = useState('signin'); // 'signin', 'signup', or 'forgot'
+    const [mode, setMode] = useState('signin'); // 'signin' or 'signup'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
     const [companyName, setCompanyName] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [localError, setLocalError] = useState('');
-    const [successMessage, setSuccessMessage] = useState('');
-    const [pastedToken, setPastedToken] = useState('');
-    const [showTokenInput, setShowTokenInput] = useState(false);
-
-    // Handle manually pasted token from browser
-    const handleTokenPaste = () => {
-        if (pastedToken && pastedToken.length > 20) {
-            localStorage.setItem('bam_token', pastedToken);
-            localStorage.setItem('token', pastedToken);
-            if (window.electronAPI?.auth?.setToken) {
-                window.electronAPI.auth.setToken(pastedToken);
-            }
-            navigate('/dashboard');
-        } else {
-            setLocalError('Please paste a valid token');
-        }
-    };
 
     // Redirect if already logged in
     if (user) {
@@ -45,31 +26,6 @@ function Login() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLocalError('');
-        setSuccessMessage('');
-
-        // Handle forgot password mode
-        if (mode === 'forgot') {
-            if (!email) {
-                setLocalError('Please enter your email');
-                return;
-            }
-            try {
-                const response = await fetch(`${API_URL}/api/auth/forgot-password`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    setSuccessMessage(data.message);
-                } else {
-                    setLocalError(data.error || 'Failed to send reset email');
-                }
-            } catch (err) {
-                setLocalError('Failed to connect to server');
-            }
-            return;
-        }
 
         if (!email || !password) {
             setLocalError('Please enter both email and password');
@@ -115,84 +71,16 @@ function Login() {
     };
 
     const handleGoogleLogin = async () => {
-        console.log('=== GOOGLE LOGIN DEBUG ===');
-        console.log('API_URL:', API_URL);
-        const fullUrl = `${API_URL}/api/auth/google/url`;
-        console.log('Full URL:', fullUrl);
-
         try {
-            // Use IPC proxy to bypass renderer CORS restrictions
-            if (window.electronAPI?.network?.fetch) {
-                console.log('Using IPC network proxy...');
-                const result = await window.electronAPI.network.fetch(fullUrl);
-                console.log('IPC result:', result);
-
-                if (result.ok && result.data?.url) {
-                    console.log('Opening Google OAuth in system browser:', result.data.url);
-
-                    // Open in system browser using Electron shell
-                    if (window.electronAPI?.shell?.openExternal) {
-                        await window.electronAPI.shell.openExternal(result.data.url);
-                        setLocalError('Complete sign-in in your browser, then return here.');
-
-                        // Start polling for auth completion
-                        let pollAttempts = 0;
-                        const pollInterval = setInterval(async () => {
-                            pollAttempts++;
-
-                            // Check localStorage for token (set by useAuth from electron-store)
-                            const token = localStorage.getItem('bam_token');
-                            if (token) {
-                                clearInterval(pollInterval);
-                                setLocalError(null);
-                                navigate('/dashboard');
-                                return;
-                            }
-
-                            // Also check electron-store directly
-                            if (window.electronAPI?.store?.get) {
-                                const storedToken = await window.electronAPI.store.get('authToken');
-                                if (storedToken) {
-                                    // Copy to localStorage and navigate
-                                    localStorage.setItem('bam_token', storedToken);
-                                    localStorage.setItem('token', storedToken);
-                                    clearInterval(pollInterval);
-                                    setLocalError(null);
-                                    navigate('/dashboard');
-                                    return;
-                                }
-                            }
-
-                            // Stop polling after 2 minutes
-                            if (pollAttempts > 120) {
-                                clearInterval(pollInterval);
-                                setLocalError('Sign-in timed out. Please try again.');
-                            }
-                        }, 1000);
-                    } else {
-                        // Fallback: navigate in-window (old behavior)
-                        window.location.href = result.data.url;
-                    }
-                } else if (result.error) {
-                    setLocalError(`Failed to connect: ${result.error}`);
-                } else {
-                    setLocalError('Google login not configured');
-                }
+            const response = await fetch(`${API_URL}/api/auth/google/url`);
+            if (response.ok) {
+                const { url } = await response.json();
+                window.location.href = url;
             } else {
-                // Fallback to regular fetch for dev mode
-                console.log('Using regular fetch (dev mode)...');
-                const response = await fetch(fullUrl);
-                if (response.ok) {
-                    const data = await response.json();
-                    window.location.href = data.url;
-                } else {
-                    setLocalError('Google login not configured');
-                }
+                setLocalError('Google login not configured');
             }
         } catch (err) {
-            console.error('=== FETCH ERROR ===');
-            console.error('Error:', err);
-            setLocalError(`Failed to connect: ${err.message}`);
+            setLocalError('Failed to connect to server');
         }
     };
 
@@ -217,37 +105,23 @@ function Login() {
                     </p>
                 </div>
 
-                {/* Mode Tabs - hide in forgot mode */}
-                {mode !== 'forgot' ? (
-                    <div className="auth-tabs">
-                        <button
-                            className={`auth-tab ${mode === 'signin' ? 'active' : ''}`}
-                            onClick={() => { setMode('signin'); setLocalError(''); setSuccessMessage(''); }}
-                            type="button"
-                        >
-                            Sign In
-                        </button>
-                        <button
-                            className={`auth-tab ${mode === 'signup' ? 'active' : ''}`}
-                            onClick={() => { setMode('signup'); setLocalError(''); setSuccessMessage(''); }}
-                            type="button"
-                        >
-                            Create Account
-                        </button>
-                    </div>
-                ) : (
-                    <div className="forgot-header">
-                        <h2 className="forgot-title">Reset Password</h2>
-                        <p className="forgot-subtitle">Enter your email and we'll send you a reset link</p>
-                        <button
-                            type="button"
-                            className="back-to-login"
-                            onClick={() => { setMode('signin'); setLocalError(''); setSuccessMessage(''); }}
-                        >
-                            ← Back to Sign In
-                        </button>
-                    </div>
-                )}
+                {/* Mode Tabs */}
+                <div className="auth-tabs">
+                    <button
+                        className={`auth-tab ${mode === 'signin' ? 'active' : ''}`}
+                        onClick={() => { setMode('signin'); setLocalError(''); }}
+                        type="button"
+                    >
+                        Sign In
+                    </button>
+                    <button
+                        className={`auth-tab ${mode === 'signup' ? 'active' : ''}`}
+                        onClick={() => { setMode('signup'); setLocalError(''); }}
+                        type="button"
+                    >
+                        Create Account
+                    </button>
+                </div>
 
                 {/* Login Form */}
                 <form className="login-form" onSubmit={handleSubmit}>
@@ -305,48 +179,29 @@ function Login() {
                         </div>
                     </div>
 
-                    {/* Password field - hide in forgot mode */}
-                    {mode !== 'forgot' && (
-                        <div className="input-group">
-                            <label className="input-label" htmlFor="password">Password</label>
-                            <div className="input-with-icon">
-                                <Lock className="input-icon" size={18} />
-                                <input
-                                    id="password"
-                                    type={showPassword ? 'text' : 'password'}
-                                    className={`input ${localError || error ? 'input-error' : ''}`}
-                                    placeholder="••••••••"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    autoComplete="current-password"
-                                />
-                                <button
-                                    type="button"
-                                    className="password-toggle"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    tabIndex={-1}
-                                >
-                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
-                            </div>
+                    <div className="input-group">
+                        <label className="input-label" htmlFor="password">Password</label>
+                        <div className="input-with-icon">
+                            <Lock className="input-icon" size={18} />
+                            <input
+                                id="password"
+                                type={showPassword ? 'text' : 'password'}
+                                className={`input ${localError || error ? 'input-error' : ''}`}
+                                placeholder="••••••••"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                autoComplete="current-password"
+                            />
+                            <button
+                                type="button"
+                                className="password-toggle"
+                                onClick={() => setShowPassword(!showPassword)}
+                                tabIndex={-1}
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
                         </div>
-                    )}
-
-                    {mode === 'signin' && (
-                        <button
-                            type="button"
-                            className="forgot-password-link"
-                            onClick={() => { setMode('forgot'); setLocalError(''); setSuccessMessage(''); }}
-                        >
-                            Forgot password?
-                        </button>
-                    )}
-
-                    {successMessage && (
-                        <div className="success-message">
-                            {successMessage}
-                        </div>
-                    )}
+                    </div>
 
                     {(localError || error) && (
                         <div className="error-message">
@@ -363,7 +218,7 @@ function Login() {
                             <span className="loading-spinner" style={{ width: 20, height: 20 }}></span>
                         ) : (
                             <>
-                                {mode === 'forgot' ? 'Send Reset Link' : mode === 'signup' ? 'Create Account' : 'Sign In'}
+                                {mode === 'signup' ? 'Create Account' : 'Sign In'}
                                 <ArrowRight size={18} />
                             </>
                         )}
@@ -389,45 +244,6 @@ function Login() {
                         </svg>
                         {mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
                     </button>
-
-                    {/* Token Paste Fallback */}
-                    <button
-                        type="button"
-                        className="token-toggle-btn"
-                        onClick={() => setShowTokenInput(!showTokenInput)}
-                        style={{ marginTop: '12px', fontSize: '12px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}
-                    >
-                        {showTokenInput ? '▲ Hide token input' : '▼ Have a token? Paste it here'}
-                    </button>
-
-                    {showTokenInput && (
-                        <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-                            <input
-                                type="text"
-                                value={pastedToken}
-                                onChange={(e) => setPastedToken(e.target.value)}
-                                placeholder="Paste your token here..."
-                                style={{
-                                    width: '100%',
-                                    padding: '10px',
-                                    borderRadius: '6px',
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    background: 'rgba(0,0,0,0.3)',
-                                    color: 'white',
-                                    marginBottom: '8px',
-                                    fontSize: '12px'
-                                }}
-                            />
-                            <button
-                                type="button"
-                                onClick={handleTokenPaste}
-                                className="btn btn-secondary"
-                                style={{ width: '100%', padding: '8px' }}
-                            >
-                                Continue with Token
-                            </button>
-                        </div>
-                    )}
                 </div>
 
                 {/* Demo Accounts */}

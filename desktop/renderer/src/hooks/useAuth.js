@@ -1,8 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-// Railway backend for packaged app - uses cloud PostgreSQL
-const API_URL = 'https://bam-production-c677.up.railway.app';
-
 const AuthContext = createContext(null);
 
 // Mock users for development
@@ -38,6 +35,9 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // Get API URL from config or default
+    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+
     // Load user from token on mount
     useEffect(() => {
         async function loadUser() {
@@ -46,47 +46,22 @@ export function AuthProvider({ children }) {
                 const token = localStorage.getItem('bam_token') || localStorage.getItem('token');
 
                 if (token) {
-                    console.log('[AUTH] Token found, verifying with backend...');
+                    // Verify token with backend
+                    const response = await fetch(`${API_URL}/api/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
 
-                    // Use IPC proxy if available (bypasses CORS)
-                    let userData = null;
-
-                    if (window.electronAPI?.network?.fetch) {
-                        console.log('[AUTH] Using IPC proxy for token verification');
-                        const result = await window.electronAPI.network.fetch(`${API_URL}/api/auth/me`, {
-                            method: 'GET',
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-
-                        console.log('[AUTH] IPC result:', result);
-
-                        if (result.ok && result.data?.user) {
-                            userData = result.data.user;
-                        }
-                    } else {
-                        // Fallback to regular fetch (dev mode)
-                        const response = await fetch(`${API_URL}/api/auth/me`, {
-                            headers: { 'Authorization': `Bearer ${token}` }
-                        });
-
-                        if (response.ok) {
-                            const data = await response.json();
-                            userData = data.user;
-                        }
-                    }
-
-                    if (userData) {
-                        console.log('[AUTH] User verified:', userData.email);
-                        setUser(userData);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setUser(data.user);
 
                         // Also store in Electron if available
                         if (window.electronAPI) {
-                            await window.electronAPI.auth.setUser(userData);
+                            await window.electronAPI.auth.setUser(data.user);
                             await window.electronAPI.auth.setToken(token);
                         }
                     } else {
                         // Invalid token, clean up
-                        console.log('[AUTH] Token verification failed, cleaning up');
                         localStorage.removeItem('bam_token');
                         localStorage.removeItem('token');
                     }
@@ -105,40 +80,22 @@ export function AuthProvider({ children }) {
         }
 
         loadUser();
-    }, []);
+    }, [API_URL]);
 
     const login = useCallback(async (email, password) => {
         setError(null);
         setLoading(true);
 
         try {
-            const url = `${API_URL}/api/auth/login`;
-            let data;
+            const response = await fetch(`${API_URL}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
 
-            // Use IPC proxy for packaged Electron app
-            if (window.electronAPI?.network?.fetch) {
-                console.log('[AUTH] Using IPC network proxy for login');
-                const result = await window.electronAPI.network.fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: { email, password }
-                });
+            const data = await response.json();
 
-                if (result.error) {
-                    throw new Error(result.error);
-                }
-                data = result.data;
-            } else {
-                // Regular fetch for dev mode
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
-                });
-                data = await response.json();
-            }
-
-            if (data.success) {
+            if (response.ok && data.success) {
                 setUser(data.user);
 
                 // Store token in localStorage
@@ -163,40 +120,22 @@ export function AuthProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [API_URL]);
 
     const register = useCallback(async (email, password, name, companyName) => {
         setError(null);
         setLoading(true);
 
         try {
-            const url = `${API_URL}/api/auth/register`;
-            let data;
+            const response = await fetch(`${API_URL}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password, name, companyName })
+            });
 
-            // Use IPC proxy for packaged Electron app
-            if (window.electronAPI?.network?.fetch) {
-                console.log('[AUTH] Using IPC network proxy for register');
-                const result = await window.electronAPI.network.fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: { email, password, name, companyName }
-                });
+            const data = await response.json();
 
-                if (result.error) {
-                    throw new Error(result.error);
-                }
-                data = result.data;
-            } else {
-                // Regular fetch for dev mode
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password, name, companyName })
-                });
-                data = await response.json();
-            }
-
-            if (data.success) {
+            if (response.ok && data.success) {
                 setUser(data.user);
 
                 // Store token in localStorage
@@ -221,7 +160,7 @@ export function AuthProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [API_URL]);
 
     const logout = useCallback(async () => {
         try {
