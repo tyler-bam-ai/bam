@@ -35,7 +35,8 @@ function ScreenRecorder() {
     const [isPaused, setIsPaused] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [permissionStatus, setPermissionStatus] = useState({ screen: false, microphone: false });
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
+    const [sourcesLoaded, setSourcesLoaded] = useState(false);
 
     const mediaRecorderRef = useRef(null);
     const streamRef = useRef(null);
@@ -43,7 +44,7 @@ function ScreenRecorder() {
     const timerRef = useRef(null);
 
     useEffect(() => {
-        checkPermissionsAndLoadSources();
+        // Don't auto-load sources - wait for user to click
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
             if (streamRef.current) {
@@ -52,7 +53,8 @@ function ScreenRecorder() {
         };
     }, []);
 
-    async function checkPermissionsAndLoadSources() {
+    async function loadSources() {
+        setLoading(true);
         try {
             if (window.electronAPI) {
                 const perms = await window.electronAPI.recording.checkPermissions();
@@ -60,6 +62,7 @@ function ScreenRecorder() {
 
                 const sources = await window.electronAPI.recording.getSources();
                 setSources(sources);
+                setSourcesLoaded(true);
             }
         } catch (error) {
             console.error('Error loading sources:', error);
@@ -221,6 +224,26 @@ function ScreenRecorder() {
             <div className="recorder-loading">
                 <Loader2 className="animate-spin" size={32} />
                 <p>Loading screen sources...</p>
+            </div>
+        );
+    }
+
+    // Show load sources button if sources not yet loaded
+    if (!sourcesLoaded) {
+        return (
+            <div className="screen-recorder">
+                <div className="source-selector">
+                    <h3>Select a screen or window to record</h3>
+                    <p style={{ color: 'var(--color-text-secondary)', marginBottom: '20px' }}>
+                        Click the button below to load available screens and windows.
+                        <br />
+                        <small style={{ opacity: 0.7 }}>This will request Screen Recording permission if not already granted.</small>
+                    </p>
+                    <button className="btn btn-primary" onClick={loadSources}>
+                        <Monitor size={18} />
+                        Load Available Screens
+                    </button>
+                </div>
             </div>
         );
     }
