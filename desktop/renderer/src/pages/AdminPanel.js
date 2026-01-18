@@ -187,22 +187,28 @@ function AdminPanel() {
         plan: 'Startup'
     });
 
-    // Load data based on demo mode
+    // Load data based on demo mode - always fetch from Railway when not demo
     useEffect(() => {
         if (isDemoMode) {
             setClients(DEMO_CLIENTS);
             setActivity(DEMO_ACTIVITY);
             setLoading(false);
         } else {
-            // Fetch real clients from API
+            // Clear clients first to avoid stale data
+            setClients([]);
+            // Fetch real clients from Railway API
             const fetchClients = async () => {
                 setLoading(true);
                 try {
+                    console.log('[ADMIN] Fetching clients from:', `${API_URL}/api/clients`);
                     const response = await fetch(`${API_URL}/api/clients`);
                     if (response.ok) {
                         const data = await response.json();
-                        console.log('[ADMIN] Loaded clients:', data);
-                        setClients(data.clients || []);
+                        console.log('[ADMIN] Received clients data:', data);
+                        // Handle both { clients: [] } and direct array format
+                        const clientsList = Array.isArray(data) ? data : (data.clients || []);
+                        setClients(clientsList);
+                        console.log('[ADMIN] Set clients:', clientsList.length);
                     } else {
                         console.error('[ADMIN] Failed to fetch clients:', response.status);
                         setClients([]);
@@ -216,7 +222,7 @@ function AdminPanel() {
             };
             fetchClients();
         }
-    }, [isDemoMode]);
+    }, [isDemoMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Calculate stats
     const stats = isDemoMode ? [
