@@ -295,7 +295,7 @@ router.post('/completions', optionalAuth, async (req, res) => {
 
         // Query knowledge base and get context with sources
         const userQuery = messages[messages.length - 1]?.content || '';
-        const knowledgeResult = await queryKnowledgeBase(knowledgeBaseId, userQuery);
+        const knowledgeResult = await queryKnowledgeBase(knowledgeBaseId, userQuery, companyId);
 
         // Build context message with source tracking
         let contextMessage = '';
@@ -491,7 +491,7 @@ router.post('/completions/stream', optionalAuth, async (req, res) => {
 
         // Query knowledge base
         const userQuery = messages[messages.length - 1]?.content || '';
-        const knowledgeResult = await queryKnowledgeBase(null, userQuery);
+        const knowledgeResult = await queryKnowledgeBase(null, userQuery, companyId);
 
         // Build context message
         let contextMessage = '';
@@ -978,7 +978,7 @@ router.post('/consensus', authMiddleware, async (req, res) => {
 
         // Query knowledge base for context
         const userQuery = messages[messages.length - 1]?.content || '';
-        const knowledgeResult = await queryKnowledgeBase(knowledgeBaseId, userQuery);
+        const knowledgeResult = await queryKnowledgeBase(knowledgeBaseId, userQuery, clientId);
 
         // Build RAG context
         const ragContext = {
