@@ -20,7 +20,8 @@ import {
     MessageCircle,
     Send,
     Clock,
-    Archive
+    Archive,
+    Brain
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
 import { useClientContext } from '../contexts/ClientContext';
@@ -887,6 +888,50 @@ function VoiceRecorder({ isDemoMode }) {
                                     </span>
                                     {rec.wordCount > 0 && (
                                         <span className="word-count">{rec.wordCount} words</span>
+                                    )}
+                                    {/* Add to Brains button */}
+                                    {rec.addedToBrains ? (
+                                        <span className="added-to-brains" title="Added to Brains">
+                                            <Brain size={16} />
+                                            ✓
+                                        </span>
+                                    ) : (
+                                        <button
+                                            className="btn-add-to-brains"
+                                            onClick={async () => {
+                                                try {
+                                                    const token = localStorage.getItem('token');
+                                                    const response = await fetch(`${API_URL}/api/knowledge/text`, {
+                                                        method: 'POST',
+                                                        headers: {
+                                                            'Content-Type': 'application/json',
+                                                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                                                        },
+                                                        body: JSON.stringify({
+                                                            clientId: selectedClient?.id || localStorage.getItem('companyId') || 'demo',
+                                                            type: 'voice_memo',
+                                                            title: rec.name,
+                                                            content: rec.transcription,
+                                                            wordCount: rec.wordCount
+                                                        })
+                                                    });
+                                                    if (response.ok) {
+                                                        setRecordings(prev => prev.map(r =>
+                                                            r.id === rec.id ? { ...r, addedToBrains: true } : r
+                                                        ));
+                                                        addLog('Added to Brains!', 'success');
+                                                    } else {
+                                                        addLog('Failed to add to Brains', 'error');
+                                                    }
+                                                } catch (err) {
+                                                    addLog(`Error: ${err.message}`, 'error');
+                                                }
+                                            }}
+                                            title="Add to Brains"
+                                        >
+                                            <Brain size={16} />
+                                            Add to Brains
+                                        </button>
                                     )}
                                 </div>
                             )}

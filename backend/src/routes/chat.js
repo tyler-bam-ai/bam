@@ -709,60 +709,85 @@ router.post('/add-to-knowledge', authMiddleware, async (req, res) => {
 });
 
 // Helper: Query knowledge base with semantic search
-async function queryKnowledgeBase(knowledgeBaseId, query) {
-    // In production, this would:
-    // 1. Embed the query using OpenAI/Cohere embeddings
-    // 2. Query Pinecone/Weaviate for similar documents
-    // 3. Return ranked results with relevance scores
+async function queryKnowledgeBase(knowledgeBaseId, query, clientId = null) {
+    try {
+        console.log(`[KNOWLEDGE] Searching for: "${query.substring(0, 50)}..." clientId: ${clientId || 'any'}`);
 
-    // Mock implementation with sample knowledge
-    const mockKnowledgeBase = {
-        documents: [
-            {
-                id: 'doc-1',
-                title: 'Employee Handbook - PTO Policy',
-                type: 'document',
-                content: 'Employees receive 15 days of PTO annually, accruing at 1.25 days per month. PTO requests must be submitted 2 weeks in advance for approval. Unused PTO does not roll over.',
-                relevanceScore: 0.85
-            },
-            {
-                id: 'doc-2',
-                title: 'Customer Refund Policy',
-                type: 'document',
-                content: 'Customer refunds should be processed within 24 hours of request approval. Refunds over $500 require manager approval. Full refunds are available within 30 days of purchase.',
-                relevanceScore: 0.78
-            },
-            {
-                id: 'doc-3',
-                title: 'Onboarding Checklist',
-                type: 'process',
-                content: 'New client onboarding checklist: 1) Contract signing, 2) Payment setup, 3) Welcome call within 48 hours, 4) Kickoff meeting, 5) First deliverable within 2 weeks.',
-                relevanceScore: 0.72
-            },
-            {
-                id: 'doc-4',
-                title: 'Weekly Report Guidelines',
-                type: 'policy',
-                content: 'Weekly reports should be submitted by Friday 5PM. Include: completed tasks, blockers, next week priorities. Use the standard template in the shared drive.',
-                relevanceScore: 0.65
-            }
-        ]
-    };
+        // Query the knowledge_items table for relevant documents
+        let knowledgeItems = [];
 
-    // Simple keyword matching for mock (would be semantic search in production)
-    const queryLower = query.toLowerCase();
-    const relevantDocs = mockKnowledgeBase.documents.filter(doc => {
-        const contentLower = (doc.title + ' ' + doc.content).toLowerCase();
-        return queryLower.split(' ').some(word =>
-            word.length > 3 && contentLower.includes(word)
-        );
-    });
+        if (clientId) {
+            // Search within specific client's knowledge
+            knowledgeItems = await db.prepare(`
+                SELECT id, type, title, content, metadata, created_at
+                FROM knowledge_items
+                WHERE company_id = ? AND status = 'ready'
+                ORDER BY created_at DESC
+                LIMIT 20
+            `).all(clientId);
+        } else {
+            // Search all knowledge items
+            knowledgeItems = await db.prepare(`
+                SELECT id, type, title, content, metadata, created_at
+                FROM knowledge_items
+                WHERE status = 'ready'
+                ORDER BY created_at DESC
+                LIMIT 20
+            `).all();
+        }
 
-    return {
-        found: relevantDocs.length > 0,
-        documents: relevantDocs.slice(0, 3), // Top 3 results
-        searchQuery: query
-    };
+        if (!knowledgeItems || knowledgeItems.length === 0) {
+            console.log('[KNOWLEDGE] No knowledge items found in database');
+            return { found: false, documents: [], searchQuery: query };
+        }
+
+        console.log(`[KNOWLEDGE] Found ${knowledgeItems.length} knowledge items, filtering by query`);
+
+        // Simple keyword matching (in production, use vector embeddings)
+        const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+
+        const scoredDocs = knowledgeItems.map(item => {
+            const searchText = `${item.title || ''} ${item.content || ''}`.toLowerCase();
+
+            // Count matching keywords
+            let matchCount = 0;
+            queryWords.forEach(word => {
+                if (searchText.includes(word)) matchCount++;
+            });
+
+            // Calculate relevance score
+            const relevanceScore = queryWords.length > 0
+                ? matchCount / queryWords.length
+                : 0.5; // Default score if no query words
+
+            return {
+                id: item.id,
+                title: item.title,
+                type: item.type,
+                content: item.content?.substring(0, 500) + (item.content?.length > 500 ? '...' : ''),
+                relevanceScore: Math.round(relevanceScore * 100) / 100,
+                createdAt: item.created_at
+            };
+        });
+
+        // Filter and sort by relevance
+        const relevantDocs = scoredDocs
+            .filter(doc => doc.relevanceScore > 0 || queryWords.length === 0)
+            .sort((a, b) => b.relevanceScore - a.relevanceScore)
+            .slice(0, 5);
+
+        console.log(`[KNOWLEDGE] Returning ${relevantDocs.length} relevant documents`);
+
+        return {
+            found: relevantDocs.length > 0,
+            documents: relevantDocs,
+            searchQuery: query,
+            totalItems: knowledgeItems.length
+        };
+    } catch (error) {
+        console.error('[KNOWLEDGE] Query error:', error);
+        return { found: false, documents: [], searchQuery: query, error: error.message };
+    }
 }
 
 // Helper: Analyze response to determine confidence level
