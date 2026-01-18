@@ -39,9 +39,8 @@ import {
     Square
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
+import { API_URL } from '../config';
 import './KnowledgeConsumer.css';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 // Brain configurations with pre-prompts
 const BRAIN_CONFIG = {
