@@ -131,12 +131,19 @@ router.post('/voice', optionalAuth, upload.single('audio'), async (req, res) => 
             createdAt: new Date().toISOString()
         });
 
-        await db.prepare(`
-            INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(itemId, clientId, 'voice_memo', itemTitle, transcription, 'ready', metadata);
+        console.log(`[KNOWLEDGE] Attempting to save to DB: itemId=${itemId}, clientId=${clientId}`);
 
-        console.log(`[KNOWLEDGE] Saved voice memo ${itemId} for client ${clientId}`);
+        try {
+            await db.prepare(`
+                INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(itemId, clientId, 'voice_memo', itemTitle, transcription, 'ready', metadata);
+            console.log(`[KNOWLEDGE] Saved voice memo ${itemId} for client ${clientId}`);
+        } catch (dbError) {
+            console.error('[KNOWLEDGE] Database save error:', dbError);
+            console.error('[KNOWLEDGE] DB Error details:', dbError.message, dbError.stack);
+            throw dbError;
+        }
 
         res.json({
             success: true,
@@ -150,7 +157,8 @@ router.post('/voice', optionalAuth, upload.single('audio'), async (req, res) => 
         });
     } catch (error) {
         console.error('[KNOWLEDGE] Voice upload error:', error);
-        res.status(500).json({ error: 'Failed to process voice memo' });
+        console.error('[KNOWLEDGE] Full error:', error.message, error.stack);
+        res.status(500).json({ error: 'Failed to process voice memo', details: error.message });
     }
 });
 
