@@ -171,6 +171,8 @@ function AdminPanel() {
     const [showClientModal, setShowClientModal] = useState(false);
     const [showUsageModal, setShowUsageModal] = useState(false);
     const [showClientProfile, setShowClientProfile] = useState(false);
+    const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
+    const [knowledgeItems, setKnowledgeItems] = useState([]);
     const [selectedClient, setSelectedClient] = useState(null);
     const [usageData, setUsageData] = useState(null);
     const [editMode, setEditMode] = useState(false);
@@ -303,6 +305,36 @@ function AdminPanel() {
     const closeClientProfile = () => {
         setShowClientProfile(false);
         setSelectedClient(null);
+    };
+
+    const viewKnowledgeItems = async (client) => {
+        setSelectedClient(client);
+        setKnowledgeItems([]);
+        setShowKnowledgeModal(true);
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/knowledge/${client.id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setKnowledgeItems(data.items || []);
+            } else {
+                console.error('Failed to fetch knowledge items');
+                setKnowledgeItems([]);
+            }
+        } catch (err) {
+            console.error('Error fetching knowledge items:', err);
+            setKnowledgeItems([]);
+        }
+    };
+
+    const closeKnowledgeModal = () => {
+        setShowKnowledgeModal(false);
+        setSelectedClient(null);
+        setKnowledgeItems([]);
     };
 
     const handleTestBrain = (client) => {
@@ -666,8 +698,8 @@ function AdminPanel() {
                                             </button>
                                             <button
                                                 className="btn btn-ghost btn-sm btn-icon"
-                                                onClick={() => viewClientProfile(client)}
-                                                title="View Profile Document"
+                                                onClick={() => viewKnowledgeItems(client)}
+                                                title="View Knowledge Items"
                                             >
                                                 <FileText size={16} />
                                             </button>
@@ -1055,6 +1087,57 @@ function AdminPanel() {
                                     Edit Client
                                 </button>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Knowledge Items Modal */}
+            {showKnowledgeModal && selectedClient && (
+                <div className="modal-overlay" onClick={closeKnowledgeModal}>
+                    <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>
+                                <FileText size={20} />
+                                Knowledge Items - {selectedClient.companyName}
+                            </h3>
+                            <button className="btn btn-ghost btn-icon" onClick={closeKnowledgeModal}>
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            {knowledgeItems.length === 0 ? (
+                                <div className="empty-state">
+                                    <FileText size={48} />
+                                    <h3>No Knowledge Items</h3>
+                                    <p>This client has no files uploaded to Brain Training yet.</p>
+                                </div>
+                            ) : (
+                                <div className="knowledge-items-list">
+                                    {knowledgeItems.map(item => (
+                                        <div key={item.id} className="knowledge-item">
+                                            <div className="knowledge-item-icon">
+                                                <FileText size={24} />
+                                            </div>
+                                            <div className="knowledge-item-info">
+                                                <span className="knowledge-item-title">{item.title}</span>
+                                                <span className="knowledge-item-meta">
+                                                    {item.type} • {item.wordCount ? `${item.wordCount} words` : ''} • {new Date(item.createdAt).toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                            <span className={`knowledge-item-status ${item.status}`}>
+                                                {item.status === 'ready' ? <CheckCircle size={14} /> : null}
+                                                {item.status}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-ghost" onClick={closeKnowledgeModal}>
+                                Close
+                            </button>
                         </div>
                     </div>
                 </div>
