@@ -329,6 +329,7 @@ const DEMO_FILES = [
 ];
 
 function DocumentUploader({ isDemoMode }) {
+    const { selectedClient } = useClientContext();
     const [files, setFiles] = useState(isDemoMode ? DEMO_FILES : []);
     const [dragActive, setDragActive] = useState(false);
     const inputRef = useRef(null);
@@ -387,8 +388,8 @@ function DocumentUploader({ isDemoMode }) {
     };
 
     const uploadToBackend = async (fileObj) => {
-        // Use imported API_URL and get client ID
-        const clientId = localStorage.getItem('selectedClientId') || localStorage.getItem('companyId') || 'demo';
+        // Get client ID from ClientContext (selectedClient comes from useClientContext hook above)
+        const clientId = selectedClient?.id || 'demo';
 
         // Update to uploading status
         setFiles(prev => prev.map(f =>
