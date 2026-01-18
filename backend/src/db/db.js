@@ -166,6 +166,31 @@ async function initializePostgresSchema() {
                 content TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS knowledge_items (
+                id TEXT PRIMARY KEY,
+                company_id TEXT NOT NULL,
+                type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT,
+                file_path TEXT,
+                file_size INTEGER,
+                mime_type TEXT,
+                status TEXT DEFAULT 'processing',
+                metadata TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS onboarding_responses (
+                id TEXT PRIMARY KEY,
+                company_id TEXT NOT NULL,
+                section TEXT,
+                question_id TEXT NOT NULL,
+                response TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         `);
         console.log('[DB] PostgreSQL schema initialized');
     } finally {
