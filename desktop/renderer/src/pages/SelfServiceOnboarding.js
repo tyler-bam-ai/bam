@@ -23,9 +23,8 @@ import {
     Play,
     Pause
 } from 'lucide-react';
+import { API_URL } from '../config';
 import './SelfServiceOnboarding.css';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 // Onboarding stages
 const STAGES = [

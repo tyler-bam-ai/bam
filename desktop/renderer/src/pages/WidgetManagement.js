@@ -20,9 +20,8 @@ import {
     ExternalLink
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
+import { API_URL } from '../config';
 import './WidgetManagement.css';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 // Demo mock data for Widget Management
 const DEMO_WIDGETS = [
