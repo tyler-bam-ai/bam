@@ -36,9 +36,8 @@ import {
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
 import { useClientContext } from '../contexts/ClientContext';
+import { API_URL } from '../config';
 import './AdminPanel.css';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 // Demo Data - Only shown when Demo Mode is ON
 const DEMO_CLIENTS = [
