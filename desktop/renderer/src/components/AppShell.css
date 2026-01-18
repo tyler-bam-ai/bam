@@ -571,3 +571,22 @@
 .admin-mode-label {
     user-select: none;
 }
+/* Disabled Nav Item (requires client selection) */
+.nav-item.disabled {
+    opacity: 0.5;
+    cursor: pointer;
+    position: relative;
+}
+
+.nav-item.disabled:hover {
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.nav-item.disabled .nav-label {
+    color: rgba(248, 250, 252, 0.5);
+}
+
+.nav-lock-icon {
+    margin-left: auto;
+    color: rgba(248, 250, 252, 0.5);
+}

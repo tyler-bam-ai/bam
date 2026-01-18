@@ -23,7 +23,8 @@ import {
     Pause,
     Presentation,
     ClipboardList,
-    X
+    X,
+    Lock
 } from 'lucide-react';
 import './AppShell.css';
 
@@ -35,8 +36,8 @@ const NAV_ITEMS = {
     bam_admin: [
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/content', icon: Video, label: 'Content Engine' },
-        { path: '/provider', icon: Upload, label: 'Brain Training' },
-        { path: '/consumer', icon: MessageSquare, label: 'BAM Brains' },
+        { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
+        { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
         { path: '/admin', icon: Building2, label: 'Admin & Clients' },
         { path: '/onboarding', icon: ClipboardList, label: 'Onboarding' },
         { path: '/settings', icon: Settings, label: 'Settings' }
@@ -44,18 +45,18 @@ const NAV_ITEMS = {
     client_admin: [
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/content', icon: Video, label: 'Content Engine' },
-        { path: '/provider', icon: Upload, label: 'Brain Training' },
-        { path: '/consumer', icon: MessageSquare, label: 'BAM Brains' },
+        { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
+        { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ],
     knowledge_provider: [
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { path: '/provider', icon: Upload, label: 'Brain Training' },
+        { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ],
     knowledge_consumer: [
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { path: '/consumer', icon: MessageSquare, label: 'Ask AI' },
+        { path: '/consumer', icon: MessageSquare, label: 'Ask AI', requiresClient: true },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ]
 };
@@ -205,20 +206,43 @@ function AppShell() {
                 </div>
 
                 <nav className="sidebar-nav">
-                    {navItems.map((item) => (
-                        <NavLink
-                            key={item.path}
-                            to={item.path}
-                            className={({ isActive }) =>
-                                `nav-item ${isActive ? 'active' : ''}`
-                            }
-                            title={sidebarCollapsed ? item.label : undefined}
-                            onClick={closeMobileSidebar}
-                        >
-                            <item.icon size={20} className="nav-icon" />
-                            {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
-                        </NavLink>
-                    ))}
+                    {navItems.map((item) => {
+                        const isDisabled = item.requiresClient && !isClientSelected;
+
+                        if (isDisabled) {
+                            return (
+                                <div
+                                    key={item.path}
+                                    className="nav-item disabled"
+                                    title={sidebarCollapsed ? `${item.label} (Select a client first)` : 'Select a client from Admin & Clients first'}
+                                    onClick={() => navigate('/admin')}
+                                >
+                                    <item.icon size={20} className="nav-icon" />
+                                    {!sidebarCollapsed && (
+                                        <>
+                                            <span className="nav-label">{item.label}</span>
+                                            <Lock size={12} className="nav-lock-icon" />
+                                        </>
+                                    )}
+                                </div>
+                            );
+                        }
+
+                        return (
+                            <NavLink
+                                key={item.path}
+                                to={item.path}
+                                className={({ isActive }) =>
+                                    `nav-item ${isActive ? 'active' : ''}`
+                                }
+                                title={sidebarCollapsed ? item.label : undefined}
+                                onClick={closeMobileSidebar}
+                            >
+                                <item.icon size={20} className="nav-icon" />
+                                {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+                            </NavLink>
+                        );
+                    })}
                 </nav>
 
                 <div className="sidebar-footer">
