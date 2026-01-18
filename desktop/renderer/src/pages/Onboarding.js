@@ -844,8 +844,10 @@ function Onboarding() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-            logger.info('WHISPER', 'Calling /api/transcription/transcribe...');
-            const response = await retryFetch(`${API_URL}/api/transcription/transcribe`, {
+            logger.info('WHISPER', 'Calling local backend for transcription...');
+            // Use LOCAL backend for Whisper - it has the OpenAI API key
+            const localBackendUrl = 'http://localhost:3001/api/transcription/transcribe';
+            const response = await retryFetch(localBackendUrl, {
                 method: 'POST',
                 headers,
                 body: formData,
