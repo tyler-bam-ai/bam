@@ -163,6 +163,57 @@ router.post('/voice', optionalAuth, upload.single('audio'), async (req, res) => 
 });
 
 /**
+ * Save text content (transcription) from local processing
+ * POST /api/knowledge/text
+ * Used when audio is transcribed locally and only text needs to be saved
+ */
+router.post('/text', optionalAuth, async (req, res) => {
+    try {
+        const { clientId, type, title, content, wordCount } = req.body;
+
+        if (!clientId) {
+            return res.status(400).json({ error: 'Client ID is required' });
+        }
+
+        if (!content) {
+            return res.status(400).json({ error: 'Content is required' });
+        }
+
+        console.log(`[KNOWLEDGE] Saving text for client ${clientId}: ${content.length} chars, ${wordCount || 0} words`);
+
+        // Save to knowledge_items table
+        const itemId = uuidv4();
+        const itemTitle = title || `${type || 'Text'} - ${new Date().toLocaleString()}`;
+        const metadata = JSON.stringify({
+            type: type || 'text',
+            wordCount: wordCount || content.split(/\s+/).filter(w => w).length,
+            source: 'brain_training',
+            createdAt: new Date().toISOString()
+        });
+
+        await db.prepare(`
+            INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(itemId, clientId, type || 'text', itemTitle, content, 'ready', metadata);
+
+        console.log(`[KNOWLEDGE] Saved text item ${itemId} for client ${clientId}`);
+
+        res.json({
+            success: true,
+            item: {
+                id: itemId,
+                title: itemTitle,
+                type: type || 'text',
+                wordCount: wordCount || content.split(/\s+/).filter(w => w).length
+            }
+        });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Text save error:', error);
+        res.status(500).json({ error: 'Failed to save text', details: error.message });
+    }
+});
+
+/**
  * Upload and analyze video
  * POST /api/knowledge/video
  * Uses Gemini via OpenRouter for video analysis

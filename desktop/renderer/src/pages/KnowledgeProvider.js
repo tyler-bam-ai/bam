@@ -643,9 +643,9 @@ function VoiceRecorder({ isDemoMode }) {
                 const clientId = selectedClient?.id || localStorage.getItem('companyId') || 'demo';
                 addLog(`Client ID: ${clientId}`);
 
-                // Upload to Railway backend for transcription
-                const uploadUrl = `${API_URL}/api/knowledge/voice`;
-                addLog(`Uploading to: ${uploadUrl}`);
+                // STEP 1: Upload audio to LOCAL backend for Whisper transcription
+                const localBackendUrl = 'http://localhost:3001/api/knowledge/voice';
+                addLog(`Transcribing via local backend: ${localBackendUrl}`);
 
                 try {
                     const token = localStorage.getItem('token');
@@ -666,6 +666,14 @@ function VoiceRecorder({ isDemoMode }) {
                     addLog(`Token: ${token ? 'present' : 'missing'}`);
                     addLog(`OpenAI Key: ${openaiKey ? 'present' : 'missing'}`);
 
+                    if (!openaiKey) {
+                        addLog('No OpenAI key found - please add it in Settings', 'error');
+                        setRecordings(prev => prev.map(r =>
+                            r.id === recordingId ? { ...r, status: 'error', error: 'No OpenAI key' } : r
+                        ));
+                        return;
+                    }
+
                     const formData = new FormData();
                     formData.append('audio', blob, `${name}.webm`);
                     formData.append('title', name);
@@ -676,20 +684,49 @@ function VoiceRecorder({ isDemoMode }) {
                     if (token) headers['Authorization'] = `Bearer ${token}`;
                     if (openaiKey) headers['X-OpenAI-Key'] = openaiKey;
 
-                    addLog('Sending request...');
+                    addLog('Sending to local backend for transcription...');
 
-                    const response = await fetch(uploadUrl, {
+                    // Call LOCAL backend for transcription
+                    const response = await fetch(localBackendUrl, {
                         method: 'POST',
                         headers,
-                        body: formData,
-                        mode: 'cors'
+                        body: formData
                     });
 
-                    addLog(`Response status: ${response.status}`);
+                    addLog(`Local backend response: ${response.status}`);
 
                     if (response.ok) {
                         const data = await response.json();
-                        addLog(`Success! Transcribed ${data.item?.wordCount || 0} words`, 'success');
+                        addLog(`Transcribed ${data.item?.wordCount || 0} words`, 'success');
+
+                        // STEP 2: Now save transcription to Railway for persistence
+                        if (data.item?.transcription) {
+                            addLog('Saving transcription to Railway...');
+                            try {
+                                const saveResponse = await fetch(`${API_URL}/api/knowledge/text`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                                    },
+                                    body: JSON.stringify({
+                                        clientId,
+                                        type: 'voice_memo',
+                                        title: name,
+                                        content: data.item.transcription,
+                                        wordCount: data.item.wordCount
+                                    })
+                                });
+                                if (saveResponse.ok) {
+                                    addLog('Saved to Railway!', 'success');
+                                } else {
+                                    addLog(`Railway save failed: ${saveResponse.status}`, 'error');
+                                }
+                            } catch (saveErr) {
+                                addLog(`Railway save error: ${saveErr.message}`, 'error');
+                            }
+                        }
+
                         setRecordings(prev => prev.map(r =>
                             r.id === recordingId
                                 ? {
@@ -703,7 +740,7 @@ function VoiceRecorder({ isDemoMode }) {
                         ));
                     } else {
                         const errorText = await response.text();
-                        addLog(`Server error: ${response.status} - ${errorText}`, 'error');
+                        addLog(`Local backend error: ${response.status} - ${errorText}`, 'error');
                         setRecordings(prev => prev.map(r =>
                             r.id === recordingId
                                 ? { ...r, status: 'error', error: `HTTP ${response.status}` }
@@ -712,7 +749,7 @@ function VoiceRecorder({ isDemoMode }) {
                     }
                 } catch (error) {
                     addLog(`Network error: ${error.message}`, 'error');
-                    addLog(`URL was: ${uploadUrl}`, 'error');
+                    addLog('Make sure the bundled backend is running', 'error');
                     setRecordings(prev => prev.map(r =>
                         r.id === recordingId ? { ...r, status: 'error', error: error.message } : r
                     ));
