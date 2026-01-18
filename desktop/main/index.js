@@ -393,7 +393,9 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, '..', 'preload.js'),
-      webSecurity: true
+      // IMPORTANT: webSecurity must be false for packaged apps
+      // to allow fetch from file:// origin to https:// (Railway API)
+      webSecurity: !app.isPackaged
     },
     backgroundColor: '#0a0a0f',
     show: true,
