@@ -32,7 +32,8 @@ import {
     X,
     Save,
     RefreshCw,
-    MousePointer2
+    MousePointer2,
+    XCircle
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
 import { useClientContext } from '../contexts/ClientContext';
