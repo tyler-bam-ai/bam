@@ -134,11 +134,12 @@ router.post('/voice', optionalAuth, upload.single('audio'), async (req, res) => 
         console.log(`[KNOWLEDGE] Attempting to save to DB: itemId=${itemId}, clientId=${clientId}`);
 
         try {
-            await db.prepare(`
+            // Use await on the insert - db.prepare().run() returns a Promise on PostgreSQL
+            const insertResult = await db.prepare(`
                 INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             `).run(itemId, clientId, 'voice_memo', itemTitle, transcription, 'ready', metadata);
-            console.log(`[KNOWLEDGE] Saved voice memo ${itemId} for client ${clientId}`);
+            console.log(`[KNOWLEDGE] Saved voice memo ${itemId} for client ${clientId}`, insertResult);
         } catch (dbError) {
             console.error('[KNOWLEDGE] Database save error:', dbError);
             console.error('[KNOWLEDGE] DB Error details:', dbError.message, dbError.stack);

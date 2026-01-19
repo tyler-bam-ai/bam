@@ -9,6 +9,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useClientContext } from '../contexts/ClientContext';
+import { useAuth } from '../hooks/useAuth';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -295,11 +296,13 @@ function determineBrainFromMessage(message) {
 function BrainChat({ brainId }) {
     const { isDemoMode } = useDemoMode();
     const { selectedClient, isClientSelected } = useClientContext();
+    const { user } = useAuth();
     const navigate = useNavigate();
     const brain = BRAIN_CONFIG[brainId];
 
     // Storage key includes clientId so each client has separate conversations
-    const clientId = selectedClient?.id || 'default';
+    // Use selectedClient for admins, or user's own companyId for regular users
+    const clientId = selectedClient?.id || user?.companyId || 'default';
     const storageKey = `bam_brain_${brainId}_${clientId}_conversations`;
 
     const [conversations, setConversations] = useState([]);
@@ -623,7 +626,7 @@ function BrainChat({ brainId }) {
                     messages: [...messages.map(m => ({ role: m.role, content: m.content })), { role: 'user', content: input.trim() }],
                     conversationId: activeConversation?.id,
                     brainType: brainId,
-                    clientId: selectedClient?.id || undefined
+                    clientId: clientId
                 }),
                 signal: abortControllerRef.current.signal
             });

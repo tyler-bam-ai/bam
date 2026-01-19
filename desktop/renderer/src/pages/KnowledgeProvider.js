@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
 import { useClientContext } from '../contexts/ClientContext';
+import { useAuth } from '../hooks/useAuth';
 import { API_URL } from '../config';
 import './KnowledgeProvider.css';
 
@@ -330,19 +331,23 @@ const DEMO_FILES = [
 
 function DocumentUploader({ isDemoMode }) {
     const { selectedClient } = useClientContext();
+    const { user } = useAuth();
     const [files, setFiles] = useState(isDemoMode ? DEMO_FILES : []);
     const [dragActive, setDragActive] = useState(false);
     const inputRef = useRef(null);
 
+    // Get effective clientId: selectedClient for admins, or user's own companyId for regular users
+    const effectiveClientId = selectedClient?.id || user?.companyId || 'demo';
+
     useEffect(() => {
         if (isDemoMode) {
             setFiles(DEMO_FILES);
-        } else if (selectedClient?.id) {
+        } else if (effectiveClientId && effectiveClientId !== 'demo') {
             // Fetch existing knowledge items for this client
             const fetchExistingItems = async () => {
                 try {
                     const token = localStorage.getItem('token');
-                    const response = await fetch(`${API_URL}/api/knowledge/${selectedClient.id}`, {
+                    const response = await fetch(`${API_URL}/api/knowledge/${effectiveClientId}`, {
                         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
                     });
                     if (response.ok) {
@@ -373,7 +378,7 @@ function DocumentUploader({ isDemoMode }) {
         } else {
             setFiles([]);
         }
-    }, [isDemoMode, selectedClient?.id]);
+    }, [isDemoMode, effectiveClientId]);
 
     const handleDrag = (e) => {
         e.preventDefault();
@@ -421,8 +426,8 @@ function DocumentUploader({ isDemoMode }) {
     };
 
     const uploadToBackend = async (fileObj) => {
-        // Get client ID from ClientContext (selectedClient comes from useClientContext hook above)
-        const clientId = selectedClient?.id || 'demo';
+        // Use effective client ID (selectedClient for admins, user's companyId for regular users)
+        const clientId = effectiveClientId;
 
         // Update to uploading status
         setFiles(prev => prev.map(f =>
@@ -593,6 +598,10 @@ function VoiceRecorder({ isDemoMode }) {
 
     // Use imported API_URL and client context hook
     const { selectedClient } = useClientContext();
+    const { user } = useAuth();
+
+    // Get effective clientId: selectedClient for admins, or user's own companyId for regular users
+    const effectiveClientId = selectedClient?.id || user?.companyId || 'demo';
 
     // Add debug log entry
     const addLog = (message, type = 'info') => {
@@ -703,8 +712,8 @@ function VoiceRecorder({ isDemoMode }) {
                     transcription: null
                 }]);
 
-                // Get client ID (use selected client or default)
-                const clientId = selectedClient?.id || localStorage.getItem('companyId') || 'demo';
+                // Use effective client ID (selectedClient for admins, user's companyId for regular users)
+                const clientId = effectiveClientId;
                 addLog(`Client ID: ${clientId}`);
 
                 // STEP 1: Upload audio to LOCAL backend for Whisper transcription
