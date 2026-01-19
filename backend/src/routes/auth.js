@@ -373,7 +373,7 @@ router.get('/google/url', (req, res) => {
         response_type: 'code',
         scope: 'openid email profile',
         access_type: 'offline',
-        prompt: 'consent'
+        prompt: 'select_account'
     });
 
     res.json({
