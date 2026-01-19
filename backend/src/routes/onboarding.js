@@ -1,6 +1,9 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
+const bcrypt = require('bcryptjs');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const db = require('../db/db');
+const { generateTemporaryPassword, sendWelcomeEmail } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -181,7 +184,7 @@ router.post('/sessions/:id/brains', authMiddleware, requireRole('bam_admin'), as
     }
 });
 
-// Deliver to client
+// Deliver to client - creates user account and sends welcome email
 router.post('/sessions/:id/deliver', authMiddleware, requireRole('bam_admin'), async (req, res) => {
     try {
         const session = onboardingSessions.get(req.params.id);
@@ -200,27 +203,87 @@ router.post('/sessions/:id/deliver', authMiddleware, requireRole('bam_admin'), a
             return res.status(400).json({ error: 'All brains must be tested before delivery' });
         }
 
-        // TODO: Actually deliver to client
-        // This would involve:
-        // 1. Creating the client account if not exists
-        // 2. Sending email notification
-        // 3. Setting up their access permissions
+        const contactEmail = session.contactEmail;
+        const companyName = session.companyName;
 
-        // Simulate delivery
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        if (!contactEmail) {
+            return res.status(400).json({ error: 'Contact email is required for delivery' });
+        }
 
+        console.log(`[ONBOARDING] Creating account for ${contactEmail} at ${companyName}`);
+
+        // 1. Check if user already exists
+        const existingUser = await db.get('SELECT id FROM users WHERE email = ?', [contactEmail]);
+        if (existingUser) {
+            return res.status(400).json({
+                error: `An account already exists for ${contactEmail}. They can log in with their existing credentials.`
+            });
+        }
+
+        // 2. Create company record
+        const companyId = uuidv4();
+        await db.run(`
+            INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'))
+        `, [
+            companyId,
+            companyName,
+            session.responses?.industry || '',
+            session.plan || 'professional',
+            session.contactName || '',
+            contactEmail,
+            JSON.stringify({ onboardingData: session.responses })
+        ]);
+
+        console.log(`[ONBOARDING] Created company ${companyName} with ID ${companyId}`);
+
+        // 3. Generate temporary password and hash it
+        const temporaryPassword = generateTemporaryPassword(12);
+        const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+
+        // 4. Create user account
+        const userId = uuidv4();
+        await db.run(`
+            INSERT INTO users (id, email, password_hash, name, role, company_id, created_at)
+            VALUES (?, ?, ?, ?, 'client_admin', ?, datetime('now'))
+        `, [
+            userId,
+            contactEmail,
+            passwordHash,
+            session.contactName || contactEmail.split('@')[0],
+            companyId
+        ]);
+
+        console.log(`[ONBOARDING] Created user ${contactEmail} with ID ${userId}`);
+
+        // 5. Send welcome email with temporary password
+        const emailResult = await sendWelcomeEmail(contactEmail, temporaryPassword, companyName);
+
+        if (!emailResult.success && !emailResult.simulated) {
+            console.error(`[ONBOARDING] Failed to send email: ${emailResult.error}`);
+            // Don't fail the delivery - account is created, just log the email failure
+        } else {
+            console.log(`[ONBOARDING] Welcome email sent to ${contactEmail}`);
+        }
+
+        // 6. Update session status
         session.status = 'delivered';
         session.deliveredAt = new Date().toISOString();
+        session.userId = userId;
+        session.companyId = companyId;
         onboardingSessions.set(session.id, session);
 
         res.json({
             success: true,
-            message: `Brains delivered to ${session.contactEmail}`,
+            message: `Account created for ${contactEmail}. Welcome email sent with login credentials.`,
+            userId,
+            companyId,
+            emailSent: emailResult.success,
             session
         });
     } catch (error) {
         console.error('Deliver brains error:', error);
-        res.status(500).json({ error: 'Failed to deliver brains' });
+        res.status(500).json({ error: 'Failed to deliver brains: ' + error.message });
     }
 });
 

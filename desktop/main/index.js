@@ -433,6 +433,22 @@ function createWindow() {
     const currentUrl = mainWindow.webContents.getURL();
     console.log('[NAV] Page finished loading:', currentUrl);
 
+    // Check if OAuth failed and redirected to login with error
+    if (currentUrl.includes('login') && currentUrl.includes('error=')) {
+      console.log('[NAV] *** OAUTH FAILED - Redirected to login with error ***');
+      const urlObj = new URL(currentUrl);
+      const error = urlObj.searchParams.get('error');
+      console.log('[NAV] Error:', error);
+      // Go back to local app's login page
+      if (app.isPackaged) {
+        const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+        mainWindow.loadFile(indexPath);
+      } else {
+        mainWindow.loadURL('http://localhost:3000');
+      }
+      return;
+    }
+
     // Check if we landed on OAuth success page (fallback if other handlers didn't catch it)
     if (currentUrl.includes('/api/auth/success') && currentUrl.includes('token=')) {
       console.log('[NAV] *** CAUGHT OAUTH SUCCESS IN DID-FINISH-LOAD ***');

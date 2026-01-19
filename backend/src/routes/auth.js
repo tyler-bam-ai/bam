@@ -219,6 +219,65 @@ router.get('/me', async (req, res) => {
     }
 });
 
+// Change password
+router.post('/change-password', async (req, res) => {
+    try {
+        // Get token from Authorization header
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'No token provided' });
+        }
+
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'Current password and new password are required' });
+        }
+
+        if (newPassword.length < 8) {
+            return res.status(400).json({ error: 'New password must be at least 8 characters' });
+        }
+
+        // Get user from database
+        const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(decoded.id);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check if user has a password (not a Google-only user)
+        if (!user.password_hash) {
+            return res.status(400).json({ error: 'This account uses Google Sign-In and cannot change password' });
+        }
+
+        // Verify current password
+        const isValidPassword = await bcrypt.compare(currentPassword, user.password_hash);
+        if (!isValidPassword) {
+            return res.status(401).json({ error: 'Current password is incorrect' });
+        }
+
+        // Hash new password and update
+        const newPasswordHash = await bcrypt.hash(newPassword, 10);
+        await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newPasswordHash, user.id);
+
+        console.log('[AUTH] Password changed for user:', user.email);
+
+        res.json({
+            success: true,
+            message: 'Password changed successfully'
+        });
+    } catch (error) {
+        console.error('Change password error:', error);
+        if (error.name === 'JsonWebTokenError') {
+            return res.status(401).json({ error: 'Invalid token' });
+        }
+        res.status(500).json({ error: 'Failed to change password' });
+    }
+});
+
 // ============================================
 // Google OAuth Routes
 // ============================================
@@ -293,6 +352,10 @@ router.get('/google/callback', async (req, res) => {
         const googleUser = await userInfoResponse.json();
         console.log('[GOOGLE AUTH] User info:', googleUser.email, googleUser.name, 'picture:', googleUser.picture);
 
+        // Determine role based on email domain
+        const isBamAdmin = googleUser.email.toLowerCase().endsWith('@bam.ai');
+        const userRole = isBamAdmin ? 'bam_admin' : 'client_admin';
+
         // Check if user exists
         let user = await db.prepare(`
             SELECT u.*, c.name as company_name 
@@ -306,38 +369,41 @@ router.get('/google/callback', async (req, res) => {
             const userId = uuidv4();
             const companyId = uuidv4();
 
-            // Create company
+            // Create company (for BAM admins, use "BAM.ai", otherwise user's name)
+            const companyName = isBamAdmin ? 'BAM.ai' : `${googleUser.name}'s Company`;
             await db.prepare(`
                 INSERT INTO companies (id, name, plan, status)
                 VALUES (?, ?, ?, ?)
-            `).run(companyId, `${googleUser.name}'s Company`, 'starter', 'active');
+            `).run(companyId, companyName, isBamAdmin ? 'enterprise' : 'starter', 'active');
 
-            // Create user with profile picture
+            // Create user with profile picture and appropriate role
             await db.prepare(`
                 INSERT INTO users (id, email, password_hash, name, role, company_id, google_id, profile_picture)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(userId, googleUser.email.toLowerCase(), '', googleUser.name, 'client_admin', companyId, googleUser.id, googleUser.picture);
+            `).run(userId, googleUser.email.toLowerCase(), '', googleUser.name, userRole, companyId, googleUser.id, googleUser.picture);
 
             user = {
                 id: userId,
                 email: googleUser.email.toLowerCase(),
                 name: googleUser.name,
-                role: 'client_admin',
+                role: userRole,
                 company_id: companyId,
-                company_name: `${googleUser.name}'s Company`,
+                company_name: companyName,
                 profile_picture: googleUser.picture
             };
 
-            console.log('[GOOGLE AUTH] Created new user:', user.email);
+            console.log('[GOOGLE AUTH] Created new user:', user.email, 'role:', userRole);
         } else {
-            // Always update name and profile picture from Google
+            // Update existing user - also upgrade role to bam_admin if @bam.ai email
+            const updatedRole = isBamAdmin ? 'bam_admin' : user.role;
             await db.prepare(`
-                UPDATE users SET name = ?, profile_picture = ?, google_id = COALESCE(google_id, ?)
+                UPDATE users SET name = ?, profile_picture = ?, google_id = COALESCE(google_id, ?), role = ?
                 WHERE id = ?
-            `).run(googleUser.name, googleUser.picture, googleUser.id, user.id);
+            `).run(googleUser.name, googleUser.picture, googleUser.id, updatedRole, user.id);
             user.name = googleUser.name;
             user.profile_picture = googleUser.picture;
-            console.log('[GOOGLE AUTH] Updated existing user:', user.email, 'name:', user.name);
+            user.role = updatedRole;
+            console.log('[GOOGLE AUTH] Updated existing user:', user.email, 'role:', updatedRole);
         }
 
         // Generate JWT token

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { API_URL } from '../config';
 import {
     User,
     Bell,
@@ -61,6 +62,17 @@ function Settings() {
 
     // Tools status
     const [ffmpegStatus, setFfmpegStatus] = useState({ installed: false, checking: true, installing: false });
+
+    // Password change state
+    const [showPasswordChange, setShowPasswordChange] = useState(false);
+    const [passwordForm, setPasswordForm] = useState({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+    });
+    const [passwordError, setPasswordError] = useState('');
+    const [passwordSuccess, setPasswordSuccess] = useState(false);
+    const [changingPassword, setChangingPassword] = useState(false);
 
     useEffect(() => {
         // Load saved settings from electron store
@@ -618,15 +630,157 @@ function Settings() {
                         <p className="section-description">Manage your account security</p>
 
                         <div className="settings-form">
-                            <div className="security-item">
-                                <div className="security-info">
-                                    <h4>Change Password</h4>
-                                    <p>Update your password regularly for better security</p>
+                            {/* Password Change - Only show for non-Google users */}
+                            {user?.google_id ? (
+                                <div className="security-item">
+                                    <div className="security-info">
+                                        <h4>Password</h4>
+                                        <p>You're signed in with Google. Password is managed by Google.</p>
+                                    </div>
                                 </div>
-                                <button className="btn btn-secondary">
-                                    Change Password
-                                </button>
-                            </div>
+                            ) : (
+                                <div className="security-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showPasswordChange ? '16px' : '0' }}>
+                                        <div className="security-info">
+                                            <h4>Change Password</h4>
+                                            <p>Update your password regularly for better security</p>
+                                        </div>
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={() => {
+                                                setShowPasswordChange(!showPasswordChange);
+                                                setPasswordError('');
+                                                setPasswordSuccess(false);
+                                            }}
+                                        >
+                                            {showPasswordChange ? 'Cancel' : 'Change Password'}
+                                        </button>
+                                    </div>
+
+                                    {showPasswordChange && (
+                                        <div className="password-change-form">
+                                            {passwordError && (
+                                                <div className="alert alert-error" style={{ marginBottom: '12px', padding: '10px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', color: 'var(--color-error)' }}>
+                                                    {passwordError}
+                                                </div>
+                                            )}
+                                            {passwordSuccess && (
+                                                <div className="alert alert-success" style={{ marginBottom: '12px', padding: '10px', background: 'rgba(34,197,94,0.1)', borderRadius: '8px', color: 'var(--color-success)' }}>
+                                                    Password changed successfully!
+                                                </div>
+                                            )}
+
+                                            <div className="form-row" style={{ marginBottom: '12px' }}>
+                                                <div className="input-group">
+                                                    <label className="input-label">Current Password</label>
+                                                    <input
+                                                        type="password"
+                                                        className="input"
+                                                        value={passwordForm.currentPassword}
+                                                        onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                                                        placeholder="Enter current password"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="form-row" style={{ marginBottom: '12px' }}>
+                                                <div className="input-group">
+                                                    <label className="input-label">New Password</label>
+                                                    <input
+                                                        type="password"
+                                                        className="input"
+                                                        value={passwordForm.newPassword}
+                                                        onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                                                        placeholder="At least 8 characters"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="form-row" style={{ marginBottom: '16px' }}>
+                                                <div className="input-group">
+                                                    <label className="input-label">Confirm New Password</label>
+                                                    <input
+                                                        type="password"
+                                                        className="input"
+                                                        value={passwordForm.confirmPassword}
+                                                        onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                                                        placeholder="Confirm new password"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                className="btn btn-primary"
+                                                disabled={changingPassword}
+                                                onClick={async () => {
+                                                    setPasswordError('');
+                                                    setPasswordSuccess(false);
+
+                                                    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+                                                        setPasswordError('All fields are required');
+                                                        return;
+                                                    }
+
+                                                    if (passwordForm.newPassword.length < 8) {
+                                                        setPasswordError('New password must be at least 8 characters');
+                                                        return;
+                                                    }
+
+                                                    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+                                                        setPasswordError('New passwords do not match');
+                                                        return;
+                                                    }
+
+                                                    setChangingPassword(true);
+
+                                                    try {
+                                                        // Get token
+                                                        let token = localStorage.getItem('bam_token') || localStorage.getItem('token');
+                                                        if (window.electronAPI) {
+                                                            token = await window.electronAPI.auth.getToken() || token;
+                                                        }
+
+                                                        const response = await fetch(`${API_URL}/api/auth/change-password`, {
+                                                            method: 'POST',
+                                                            headers: {
+                                                                'Content-Type': 'application/json',
+                                                                'Authorization': `Bearer ${token}`
+                                                            },
+                                                            body: JSON.stringify({
+                                                                currentPassword: passwordForm.currentPassword,
+                                                                newPassword: passwordForm.newPassword
+                                                            })
+                                                        });
+
+                                                        const data = await response.json();
+
+                                                        if (!response.ok) {
+                                                            setPasswordError(data.error || 'Failed to change password');
+                                                        } else {
+                                                            setPasswordSuccess(true);
+                                                            setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                                                            setTimeout(() => {
+                                                                setShowPasswordChange(false);
+                                                                setPasswordSuccess(false);
+                                                            }, 2000);
+                                                        }
+                                                    } catch (err) {
+                                                        setPasswordError('Failed to connect to server');
+                                                    } finally {
+                                                        setChangingPassword(false);
+                                                    }
+                                                }}
+                                            >
+                                                {changingPassword ? (
+                                                    <><Loader2 size={16} className="spin" /> Changing...</>
+                                                ) : (
+                                                    'Update Password'
+                                                )}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="security-item">
                                 <div className="security-info">
