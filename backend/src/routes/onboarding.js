@@ -237,8 +237,8 @@ router.post('/sessions/:id/deliver', authMiddleware, requireRole('bam_admin'), a
 
         console.log(`[ONBOARDING] Created company ${companyName} with ID ${companyId}`);
 
-        // 3. Generate temporary password and hash it
-        const temporaryPassword = generateTemporaryPassword(12);
+        // 3. Use email as password for easy testing
+        const temporaryPassword = contactEmail; // Email is the password
         const passwordHash = await bcrypt.hash(temporaryPassword, 10);
 
         // 4. Create user account
@@ -248,7 +248,7 @@ router.post('/sessions/:id/deliver', authMiddleware, requireRole('bam_admin'), a
             VALUES (?, ?, ?, ?, 'client_admin', ?, datetime('now'))
         `, [
             userId,
-            contactEmail,
+            contactEmail.toLowerCase(),
             passwordHash,
             session.contactName || contactEmail.split('@')[0],
             companyId
@@ -256,12 +256,11 @@ router.post('/sessions/:id/deliver', authMiddleware, requireRole('bam_admin'), a
 
         console.log(`[ONBOARDING] Created user ${contactEmail} with ID ${userId}`);
 
-        // 5. Send welcome email with temporary password
+        // 5. Send welcome email (optional - may not be configured)
         const emailResult = await sendWelcomeEmail(contactEmail, temporaryPassword, companyName);
 
         if (!emailResult.success && !emailResult.simulated) {
             console.error(`[ONBOARDING] Failed to send email: ${emailResult.error}`);
-            // Don't fail the delivery - account is created, just log the email failure
         } else {
             console.log(`[ONBOARDING] Welcome email sent to ${contactEmail}`);
         }
@@ -275,9 +274,10 @@ router.post('/sessions/:id/deliver', authMiddleware, requireRole('bam_admin'), a
 
         res.json({
             success: true,
-            message: `Account created for ${contactEmail}. Welcome email sent with login credentials.`,
+            message: `Account created for ${contactEmail}.`,
             userId,
             companyId,
+            temporaryPassword, // Return so UI can show popup
             emailSent: emailResult.success,
             session
         });
@@ -803,10 +803,7 @@ We typically respond within 2 business hours.`
     }
 });
 
-// In-memory clients store (replace with database in production)
-const clients = new Map();
-
-// Create client from onboarding session
+// Create client from onboarding session - SAVES TO DATABASE
 router.post('/create-client', authMiddleware, requireRole('bam_admin'), async (req, res) => {
     try {
         const {
@@ -826,71 +823,98 @@ router.post('/create-client', authMiddleware, requireRole('bam_admin'), async (r
             return res.status(400).json({ error: 'Company name and contact email are required' });
         }
 
-        const clientId = uuidv4();
-        const newClient = {
-            id: clientId,
+        // Check if user already exists
+        const existingUser = await db.get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [contactEmail]);
+        if (existingUser) {
+            return res.status(400).json({
+                error: `An account already exists for ${contactEmail}. They can log in with their existing credentials.`
+            });
+        }
+
+        // 1. Create company record in database
+        const companyId = uuidv4();
+        await db.run(`
+            INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'))
+        `, [
+            companyId,
             companyName,
-            contactName,
+            industry || '',
+            plan || 'professional',
+            contactName || '',
             contactEmail,
-            contactPhone,
-            website,
-            industry,
-            plan,
-            seats,
-            status: 'active',
-            createdAt: new Date().toISOString(),
-            createdBy: req.user.id,
-            // Store API keys securely (in production, encrypt these)
-            apiKeys: clientApiKeys || {},
-            // Knowledge base from onboarding responses
-            knowledgeData: responses || {},
-            // Brains will be associated later
-            brains: {
-                operations: null,
-                employee: null,
-                branding: null
-            }
-        };
+            JSON.stringify({
+                onboardingData: responses || {},
+                apiKeys: clientApiKeys || {},
+                website: website || '',
+                phone: contactPhone || '',
+                seats: seats || 5
+            })
+        ]);
 
-        clients.set(clientId, newClient);
+        console.log(`[CREATE-CLIENT] Created company ${companyName} with ID ${companyId}`);
 
-        console.log(`Created new client: ${companyName} (${clientId})`);
+        // 2. Create user account - PASSWORD = EMAIL for easy testing
+        const temporaryPassword = contactEmail; // Email is the password for testing
+        const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+
+        const userId = uuidv4();
+        await db.run(`
+            INSERT INTO users (id, email, password_hash, name, role, company_id, created_at)
+            VALUES (?, ?, ?, ?, 'client_admin', ?, datetime('now'))
+        `, [
+            userId,
+            contactEmail.toLowerCase(),
+            passwordHash,
+            contactName || contactEmail.split('@')[0],
+            companyId
+        ]);
+
+        console.log(`[CREATE-CLIENT] Created user ${contactEmail} with ID ${userId}`);
 
         res.status(201).json({
             success: true,
-            clientId,
+            clientId: companyId,
+            userId,
+            temporaryPassword, // Return so UI can show it
             client: {
-                id: clientId,
+                id: companyId,
                 companyName,
                 contactName,
                 contactEmail,
-                plan,
+                plan: plan || 'professional',
                 status: 'active'
             }
         });
 
     } catch (error) {
         console.error('Create client error:', error);
-        res.status(500).json({ error: 'Failed to create client' });
+        res.status(500).json({ error: 'Failed to create client: ' + error.message });
     }
 });
 
-// Get all clients (for admin panel)
-router.get('/clients', authMiddleware, requireRole('bam_admin'), (req, res) => {
+// Get all clients (for admin panel) - FROM DATABASE
+router.get('/clients', authMiddleware, requireRole('bam_admin'), async (req, res) => {
     try {
-        const clientList = Array.from(clients.values())
-            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-            .map(c => ({
-                id: c.id,
-                companyName: c.companyName,
-                contactName: c.contactName,
-                contactEmail: c.contactEmail,
-                plan: c.plan,
-                status: c.status,
-                createdAt: c.createdAt
-            }));
+        // Query companies from database, joined with users to get contact info
+        const clients = await db.all(`
+            SELECT 
+                c.id,
+                c.name as companyName,
+                c.contact_name as contactName,
+                c.contact_email as contactEmail,
+                c.plan,
+                c.status,
+                c.industry,
+                c.created_at as createdAt,
+                u.id as userId
+            FROM companies c
+            LEFT JOIN users u ON u.company_id = c.id AND u.role = 'client_admin'
+            WHERE c.name != 'BAM.ai'
+            ORDER BY c.created_at DESC
+        `);
 
-        res.json(clientList);
+        res.json(clients || []);
     } catch (error) {
         console.error('List clients error:', error);
         res.status(500).json({ error: 'Failed to list clients' });

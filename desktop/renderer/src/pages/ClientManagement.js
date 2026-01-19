@@ -124,6 +124,8 @@ function ClientManagement() {
     });
     const [editMode, setEditMode] = useState(false);
     const [usageData, setUsageData] = useState(null);
+    const [showCredentialsPopup, setShowCredentialsPopup] = useState(false);
+    const [newCredentials, setNewCredentials] = useState({ email: '', password: '' });
 
     // Load demo data when demo mode changes
     useEffect(() => {
@@ -142,7 +144,7 @@ function ClientManagement() {
         try {
             setLoading(true);
             const token = localStorage.getItem('bam_token');
-            const response = await fetch(`${API_URL}/api/clients`, {
+            const response = await fetch(`${API_URL}/api/onboarding/clients`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
 
@@ -204,8 +206,9 @@ function ClientManagement() {
 
     const createClient = async () => {
         try {
+            setError(null);
             const token = localStorage.getItem('bam_token');
-            const response = await fetch(`${API_URL}/api/clients`, {
+            const response = await fetch(`${API_URL}/api/onboarding/create-client`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -214,12 +217,20 @@ function ClientManagement() {
                 body: JSON.stringify(clientForm)
             });
 
+            const data = await response.json();
+
             if (response.ok) {
-                const data = await response.json();
                 setClients(prev => [...prev, data.client]);
                 closeClientModal();
+
+                // Show credentials popup
+                setNewCredentials({
+                    email: data.client.contactEmail,
+                    password: data.temporaryPassword || data.client.contactEmail
+                });
+                setShowCredentialsPopup(true);
             } else {
-                setError('Failed to create client');
+                setError(data.error || 'Failed to create client');
             }
         } catch (err) {
             console.error('Create client error:', err);
@@ -667,6 +678,105 @@ function ClientManagement() {
                         <div className="modal-actions">
                             <button className="btn-secondary" onClick={() => setShowUsageModal(false)}>
                                 Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Credentials Popup */}
+            {showCredentialsPopup && (
+                <div className="modal-overlay" onClick={() => setShowCredentialsPopup(false)}>
+                    <div className="modal credentials-modal" onClick={e => e.stopPropagation()}>
+                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                            <CheckCircle size={48} style={{ color: 'var(--color-success)', marginBottom: '12px' }} />
+                            <h3 style={{ margin: '0 0 8px 0' }}>Client Created Successfully!</h3>
+                            <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>
+                                Share these login credentials with your client
+                            </p>
+                        </div>
+
+                        <div style={{
+                            background: 'var(--color-surface-elevated)',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            marginBottom: '16px'
+                        }}>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '0.75rem',
+                                    color: 'var(--color-text-tertiary)',
+                                    marginBottom: '4px'
+                                }}>Email (Username)</label>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    background: 'var(--color-background)',
+                                    padding: '10px 12px',
+                                    borderRadius: '6px',
+                                    fontFamily: 'monospace'
+                                }}>
+                                    <span style={{ flex: 1 }}>{newCredentials.email}</span>
+                                    <button
+                                        className="btn-ghost"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(newCredentials.email);
+                                        }}
+                                        style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                                    >
+                                        Copy
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '0.75rem',
+                                    color: 'var(--color-text-tertiary)',
+                                    marginBottom: '4px'
+                                }}>Temporary Password</label>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    background: 'var(--color-background)',
+                                    padding: '10px 12px',
+                                    borderRadius: '6px',
+                                    fontFamily: 'monospace'
+                                }}>
+                                    <span style={{ flex: 1 }}>{newCredentials.password}</span>
+                                    <button
+                                        className="btn-ghost"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(newCredentials.password);
+                                        }}
+                                        style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                                    >
+                                        Copy
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p style={{
+                            fontSize: '0.85rem',
+                            color: 'var(--color-text-tertiary)',
+                            textAlign: 'center',
+                            marginBottom: '16px'
+                        }}>
+                            The client can change their password in Settings → Security after logging in.
+                        </p>
+
+                        <div className="modal-actions">
+                            <button
+                                className="btn-primary"
+                                onClick={() => setShowCredentialsPopup(false)}
+                                style={{ width: '100%' }}
+                            >
+                                Done
                             </button>
                         </div>
                     </div>
