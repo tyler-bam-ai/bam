@@ -198,15 +198,19 @@ router.get('/me', async (req, res) => {
         }
 
         res.json({
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            role: user.role,
-            company: {
-                id: user.company_id,
-                name: user.company_name,
-                industry: user.industry,
-                plan: user.plan
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                companyId: user.company_id,
+                companyName: user.company_name,
+                company: {
+                    id: user.company_id,
+                    name: user.company_name,
+                    industry: user.industry,
+                    plan: user.plan
+                }
             }
         });
     } catch (error) {

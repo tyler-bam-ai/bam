@@ -433,24 +433,62 @@ function createWindow() {
     console.log('Page finished loading');
   });
 
-  // Handle OAuth: catch when we land on success page after all redirects
-  // did-navigate fires AFTER navigation completes (unlike will-navigate)
-  mainWindow.webContents.on('did-navigate', (event, url) => {
-    console.log('[NAV] Did navigate to:', url);
+  // Handle OAuth: catch server redirects and page navigation
+  // Try multiple events to ensure we catch the success page
 
-    // Check if we landed on the auth success page with token
+  // 1. will-redirect: fires when server sends 302 redirect
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    console.log('[NAV] Will redirect to:', url);
+
     if (url.includes('/api/auth/success') && url.includes('token=')) {
-      console.log('[NAV] Landed on auth success page, extracting token');
+      console.log('[NAV] *** INTERCEPTING AUTH SUCCESS REDIRECT ***');
+      event.preventDefault();
 
-      // Extract token from URL
       const urlObj = new URL(url);
       const token = urlObj.searchParams.get('token');
 
       if (token) {
-        console.log('[NAV] Token found, storing and reloading app');
+        console.log('[NAV] Token extracted:', token.substring(0, 20) + '...');
         store.set('authToken', token);
 
-        // Reload local app and inject token
+        // Load local app and inject token
+        setTimeout(async () => {
+          if (app.isPackaged) {
+            const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+            await mainWindow.loadFile(indexPath);
+          } else {
+            await mainWindow.loadURL('http://localhost:3000');
+          }
+
+          mainWindow.webContents.once('did-finish-load', () => {
+            mainWindow.webContents.executeJavaScript(`
+              localStorage.setItem('bam_token', '${token}');
+              localStorage.setItem('token', '${token}');
+              console.log('[OAuth] Token injected from Electron');
+              window.location.reload();
+            `);
+          });
+        }, 100);
+      }
+      return;
+    }
+  });
+
+  // 2. did-navigate: fires after navigation completes
+  mainWindow.webContents.on('did-navigate', (event, url) => {
+    console.log('[NAV] Did navigate to:', url);
+
+    if (url.includes('/api/auth/success') && url.includes('token=')) {
+      console.log('[NAV] *** LANDED ON AUTH SUCCESS PAGE ***');
+
+      const urlObj = new URL(url);
+      const token = urlObj.searchParams.get('token');
+
+      if (token) {
+        console.log('[NAV] Token found, injecting into app');
+        store.set('authToken', token);
+
+        // Load local app and inject token
         const loadAndInjectToken = async () => {
           if (app.isPackaged) {
             const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
@@ -459,7 +497,6 @@ function createWindow() {
             await mainWindow.loadURL('http://localhost:3000');
           }
 
-          // Wait for page to be ready, then inject token
           mainWindow.webContents.once('did-finish-load', () => {
             mainWindow.webContents.executeJavaScript(`
               localStorage.setItem('bam_token', '${token}');
