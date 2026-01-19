@@ -642,9 +642,9 @@ router.get('/conversations/:id', authMiddleware, (req, res) => {
     });
 });
 
-// List user's conversations
+// List user's conversations (optionally filtered by client)
 router.get('/conversations', authMiddleware, (req, res) => {
-    const { brainType } = req.query;
+    const { brainType, clientId } = req.query;
 
     let query = `
         SELECT c.*, 
@@ -654,6 +654,12 @@ router.get('/conversations', authMiddleware, (req, res) => {
         WHERE c.user_id = ?
     `;
     const params = [req.user.id];
+
+    // Filter by client if provided
+    if (clientId) {
+        query += ' AND c.company_id = ?';
+        params.push(clientId);
+    }
 
     if (brainType) {
         query += ' AND c.brain_type = ?';
@@ -668,12 +674,99 @@ router.get('/conversations', authMiddleware, (req, res) => {
         id: c.id,
         title: c.title,
         brainType: c.brain_type,
+        clientId: c.company_id,
         pinned: c.pinned === 1,
         messageCount: c.message_count,
         lastMessage: c.last_message?.substring(0, 100),
         createdAt: c.created_at,
         updatedAt: c.updated_at
     })));
+});
+
+// Save/update a conversation with messages (for syncing from frontend)
+router.put('/conversations/:id', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, brainType, clientId, pinned, messages } = req.body;
+        const userId = req.user.id;
+
+        // Check if conversation exists
+        let conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
+
+        if (!conversation) {
+            // Create new conversation
+            db.prepare(`
+                INSERT INTO conversations (id, user_id, company_id, brain_type, title, pinned)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run(id, userId, clientId || null, brainType || null, title || 'New Conversation', pinned ? 1 : 0);
+            console.log(`[SYNC] Created conversation ${id} for client ${clientId}`);
+        } else {
+            // Update existing conversation
+            db.prepare(`
+                UPDATE conversations 
+                SET title = ?, brain_type = ?, company_id = ?, pinned = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).run(title || conversation.title, brainType || conversation.brain_type, clientId || conversation.company_id, pinned ? 1 : 0, id);
+        }
+
+        // Sync messages if provided
+        if (messages && Array.isArray(messages)) {
+            // Get existing message IDs
+            const existingMsgs = db.prepare('SELECT id FROM messages WHERE conversation_id = ?').all(id);
+            const existingIds = new Set(existingMsgs.map(m => m.id));
+
+            // Insert new messages only
+            const insertStmt = db.prepare(`
+                INSERT OR IGNORE INTO messages (id, conversation_id, role, content, metadata, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `);
+
+            for (const msg of messages) {
+                if (!existingIds.has(msg.id)) {
+                    insertStmt.run(
+                        msg.id,
+                        id,
+                        msg.role,
+                        msg.content,
+                        msg.metadata ? JSON.stringify(msg.metadata) : null,
+                        msg.createdAt || new Date().toISOString()
+                    );
+                }
+            }
+            console.log(`[SYNC] Synced ${messages.length} messages for conversation ${id}`);
+        }
+
+        res.json({ success: true, conversationId: id });
+    } catch (error) {
+        console.error('Save conversation error:', error);
+        res.status(500).json({ error: 'Failed to save conversation' });
+    }
+});
+
+// Delete a conversation
+router.delete('/conversations/:id', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id);
+
+        if (!conversation) {
+            return res.status(404).json({ error: 'Conversation not found' });
+        }
+
+        if (conversation.user_id !== req.user.id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        // Delete messages first
+        db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(id);
+        // Delete conversation
+        db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete conversation error:', error);
+        res.status(500).json({ error: 'Failed to delete conversation' });
+    }
 });
 
 

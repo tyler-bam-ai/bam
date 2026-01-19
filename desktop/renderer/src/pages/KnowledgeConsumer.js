@@ -328,35 +328,87 @@ function BrainChat({ brainId }) {
                 startNewConversation();
             }
         } else {
-            // Load from localStorage
-            const saved = localStorage.getItem(storageKey);
-            if (saved && !hasLoadedRef.current) {
+            // Load from Railway API
+            const loadFromRailway = async () => {
                 try {
-                    const parsed = JSON.parse(saved);
-                    setConversations(parsed.conversations || []);
-                    if (parsed.activeId && parsed.conversations) {
-                        const active = parsed.conversations.find(c => c.id === parsed.activeId);
-                        if (active) {
-                            setActiveConversation(active);
-                            setMessages(active.messages || []);
+                    const token = localStorage.getItem('token');
+                    const response = await fetch(`${API_URL}/api/chat/conversations?clientId=${clientId}&brainType=${brainId}`, {
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log(`[BRAIN] Loaded ${data.length} conversations from Railway for client ${clientId}`);
+
+                        if (data.length > 0) {
+                            // Load full conversation with messages for the first one
+                            const firstConvo = data[0];
+                            const detailResponse = await fetch(`${API_URL}/api/chat/conversations/${firstConvo.id}`, {
+                                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                            });
+
+                            if (detailResponse.ok) {
+                                const fullConvo = await detailResponse.json();
+                                const conversationsWithMessages = data.map(c => ({
+                                    ...c,
+                                    messages: c.id === fullConvo.id ? fullConvo.messages : []
+                                }));
+                                setConversations(conversationsWithMessages);
+                                setActiveConversation(conversationsWithMessages[0]);
+                                setMessages(fullConvo.messages || []);
+                            } else {
+                                setConversations(data);
+                                setActiveConversation(data[0]);
+                                setMessages([]);
+                            }
                         } else {
                             startNewConversation();
                         }
-                    } else if (parsed.conversations?.length > 0) {
-                        setActiveConversation(parsed.conversations[0]);
-                        setMessages(parsed.conversations[0].messages || []);
                     } else {
+                        // Fallback to localStorage
+                        console.log('[BRAIN] Railway load failed, using localStorage fallback');
+                        loadFromLocalStorage();
+                    }
+                } catch (error) {
+                    console.error('[BRAIN] Error loading from Railway:', error);
+                    loadFromLocalStorage();
+                }
+            };
+
+            const loadFromLocalStorage = () => {
+                const saved = localStorage.getItem(storageKey);
+                if (saved && !hasLoadedRef.current) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        setConversations(parsed.conversations || []);
+                        if (parsed.activeId && parsed.conversations) {
+                            const active = parsed.conversations.find(c => c.id === parsed.activeId);
+                            if (active) {
+                                setActiveConversation(active);
+                                setMessages(active.messages || []);
+                            } else {
+                                startNewConversation();
+                            }
+                        } else if (parsed.conversations?.length > 0) {
+                            setActiveConversation(parsed.conversations[0]);
+                            setMessages(parsed.conversations[0].messages || []);
+                        } else {
+                            startNewConversation();
+                        }
+                        console.log('[BRAIN] Restored conversations from localStorage:', parsed.conversations?.length || 0);
+                    } catch (e) {
+                        console.error('Failed to load brain conversations:', e);
                         startNewConversation();
                     }
-                    console.log('[BRAIN] Restored conversations from localStorage:', parsed.conversations?.length || 0);
-                } catch (e) {
-                    console.error('Failed to load brain conversations:', e);
+                } else if (!hasLoadedRef.current) {
                     startNewConversation();
                 }
-            } else if (!hasLoadedRef.current) {
-                startNewConversation();
+            };
+
+            if (!hasLoadedRef.current) {
+                loadFromRailway();
+                hasLoadedRef.current = true;
             }
-            hasLoadedRef.current = true;
         }
     }, [isDemoMode, brainId, clientId]);
 
@@ -401,17 +453,53 @@ function BrainChat({ brainId }) {
         }
     }, [clientId, storageKey]);
 
-    // Save conversations to localStorage whenever they change
+    // Save conversations to localStorage AND sync to Railway
     useEffect(() => {
         if (!isDemoMode && conversations.length > 0) {
+            // Save to localStorage (immediate)
             const dataToSave = {
                 conversations,
                 activeId: activeConversation?.id,
                 lastModified: new Date().toISOString()
             };
             localStorage.setItem(storageKey, JSON.stringify(dataToSave));
+
+            // Sync active conversation to Railway (debounced)
+            if (activeConversation?.id) {
+                const syncToRailway = async () => {
+                    try {
+                        const token = localStorage.getItem('token');
+                        if (!token) return;
+
+                        const response = await fetch(`${API_URL}/api/chat/conversations/${activeConversation.id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({
+                                title: activeConversation.title,
+                                brainType: brainId,
+                                clientId: clientId,
+                                pinned: activeConversation.pinned || false,
+                                messages: activeConversation.messages || messages
+                            })
+                        });
+
+                        if (response.ok) {
+                            console.log(`[BRAIN] Synced conversation ${activeConversation.id} to Railway`);
+                        }
+                    } catch (error) {
+                        console.error('[BRAIN] Failed to sync to Railway:', error);
+                    }
+                };
+
+                // Debounce sync to avoid too many API calls
+                const timeoutId = setTimeout(syncToRailway, 1000);
+                return () => clearTimeout(timeoutId);
+            }
         }
-    }, [conversations, activeConversation, isDemoMode, storageKey]);
+    }, [conversations, activeConversation, messages, isDemoMode, storageKey, brainId, clientId]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
