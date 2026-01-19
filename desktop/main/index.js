@@ -2,7 +2,28 @@ const { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences, Menu, d
 const path = require('path');
 const Store = require('electron-store');
 const { fork } = require('child_process');
-const { autoUpdater } = require('electron-updater');
+
+// Wrap auto-updater in try-catch for Windows compatibility
+let autoUpdater = null;
+let electronLog = null;
+
+try {
+  const { autoUpdater: updater } = require('electron-updater');
+  autoUpdater = updater;
+
+  try {
+    electronLog = require('electron-log');
+    autoUpdater.logger = electronLog;
+    autoUpdater.logger.transports.file.level = 'info';
+  } catch (logErr) {
+    console.log('[MAIN] electron-log not available, using console');
+  }
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+} catch (err) {
+  console.log('[MAIN] Auto-updater not available:', err.message);
+}
 
 // Initialize secure storage with unique name for BAM.ai
 const store = new Store({
@@ -16,14 +37,13 @@ let backendProcess = null;
 // =====================================================
 // AUTO-UPDATER CONFIGURATION
 // =====================================================
-autoUpdater.autoDownload = false; // Manual download after user confirms
-autoUpdater.autoInstallOnAppQuit = true;
-
-// Logging for debugging
-autoUpdater.logger = require('electron-log');
-autoUpdater.logger.transports.file.level = 'info';
 
 function setupAutoUpdater() {
+  if (!autoUpdater) {
+    console.log('[UPDATER] Auto-updater not available, skipping setup');
+    return;
+  }
+
   autoUpdater.on('checking-for-update', () => {
     console.log('[UPDATER] Checking for updates...');
     if (mainWindow) {
@@ -100,6 +120,10 @@ function setupAutoUpdater() {
 }
 
 function checkForUpdates() {
+  if (!autoUpdater) {
+    console.log('[UPDATER] Auto-updater not available');
+    return;
+  }
   autoUpdater.checkForUpdates();
 }
 
