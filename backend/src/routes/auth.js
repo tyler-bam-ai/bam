@@ -331,9 +331,16 @@ router.get('/google/callback', async (req, res) => {
         const token = generateToken(user);
 
         // Redirect to frontend with token
-        // For Electron app, we use a custom protocol or deep link
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+        // For Electron app: redirect to a success page on the same server that 
+        // allows the app to capture the token via the external browser window
+        const frontendUrl = process.env.FRONTEND_URL;
+        if (frontendUrl && frontendUrl !== 'http://localhost:3000') {
+            // Web app deployment - redirect to frontend
+            res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+        } else {
+            // Electron app or no FRONTEND_URL set - use auth success page
+            res.redirect(`/api/auth/success?token=${token}`);
+        }
 
     } catch (error) {
         console.error('[GOOGLE AUTH] Callback error:', error);
@@ -359,6 +366,127 @@ router.get('/google/url', (req, res) => {
     res.json({
         url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
     });
+});
+
+// Auth success page - for Electron app OAuth flow
+// This page is shown after successful Google OAuth and contains the token
+router.get('/success', (req, res) => {
+    const { token } = req.query;
+
+    if (!token) {
+        return res.status(400).send('No token provided');
+    }
+
+    // Serve an HTML page that:
+    // 1. Shows success message
+    // 2. Stores token in localStorage (for web)
+    // 3. Provides the token in a way Electron can capture
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign In Successful - BAM.ai</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #f8fafc;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+            max-width: 400px;
+        }
+        .success-icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            font-size: 32px;
+        }
+        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+        p { color: #94a3b8; margin-bottom: 1.5rem; }
+        .token-box {
+            background: rgba(0,0,0,0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-bottom: 1rem;
+            max-height: 100px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .btn {
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin: 0.25rem;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+        }
+        .note {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success-icon">✓</div>
+        <h1>Sign In Successful!</h1>
+        <p>You've been signed in with Google.</p>
+        <div class="token-box" id="tokenDisplay">${token.substring(0, 50)}...</div>
+        <button class="btn" onclick="copyToken()">Copy Token</button>
+        <button class="btn btn-secondary" onclick="window.close()">Close Window</button>
+        <p class="note">Paste this token in the BAM.ai app to complete sign-in.</p>
+    </div>
+    <script>
+        const token = "${token}";
+        
+        // Store in localStorage for web app
+        try {
+            localStorage.setItem('bam_token', token);
+            localStorage.setItem('token', token);
+        } catch(e) {}
+        
+        // For Electron: post message to parent
+        try {
+            window.opener?.postMessage({ type: 'oauth-success', token }, '*');
+        } catch(e) {}
+        
+        function copyToken() {
+            navigator.clipboard.writeText(token).then(() => {
+                alert('Token copied! Paste it in the BAM.ai app.');
+            });
+        }
+    </script>
+</body>
+</html>
+    `);
 });
 
 module.exports = router;
