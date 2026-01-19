@@ -434,17 +434,54 @@ function createWindow() {
   });
 
   // Handle OAuth redirects: intercept navigation to Railway paths 
-  // like /dashboard after OAuth and reload the local React app
+  // Extract token from URL if present and store in Electron store
   mainWindow.webContents.on('will-navigate', (event, url) => {
     console.log('[NAV] Will navigate to:', url);
 
-    // Check if navigating to Railway backend's /dashboard (after OAuth)
-    // Railway URLs contain 'railway.app' in the hostname
+    // Check if this is the auth success page with token
+    if (url.includes('/api/auth/success') && url.includes('token=')) {
+      console.log('[NAV] Intercepting auth success with token');
+      event.preventDefault();
+
+      // Extract token from URL
+      const urlObj = new URL(url);
+      const token = urlObj.searchParams.get('token');
+
+      if (token) {
+        console.log('[NAV] Storing token in Electron store');
+        store.set('authToken', token);
+
+        // Inject token into localStorage when app reloads
+        // We'll do this via executeJavaScript after loading
+        const loadAndInjectToken = async () => {
+          if (app.isPackaged) {
+            const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+            await mainWindow.loadFile(indexPath);
+          } else {
+            await mainWindow.loadURL('http://localhost:3000');
+          }
+
+          // Inject token into localStorage
+          mainWindow.webContents.executeJavaScript(`
+            localStorage.setItem('bam_token', '${token}');
+            localStorage.setItem('token', '${token}');
+            console.log('[OAuth] Token injected from Electron');
+            // Trigger app to re-check auth
+            window.location.reload();
+          `);
+        };
+
+        loadAndInjectToken();
+        return;
+      }
+    }
+
+    // Also intercept /dashboard redirect from Railway (fallback)
     if (url.includes('railway.app/dashboard') || url.includes('railway.app/login')) {
       console.log('[NAV] Intercepting Railway redirect, reloading local app');
       event.preventDefault();
 
-      // Reload the local React app - it will pick up token from localStorage
+      // Reload the local React app
       if (app.isPackaged) {
         const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
         mainWindow.loadFile(indexPath);
