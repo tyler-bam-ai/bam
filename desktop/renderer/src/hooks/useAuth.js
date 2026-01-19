@@ -42,8 +42,20 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         async function loadUser() {
             try {
-                // Check localStorage for token
-                const token = localStorage.getItem('bam_token') || localStorage.getItem('token');
+                // Check for token - try Electron store first (more reliable), then localStorage
+                let token = null;
+
+                // In Electron, use the electron store (persists across app restarts)
+                if (window.electronAPI) {
+                    token = await window.electronAPI.auth.getToken();
+                    console.log('[Auth] Token from Electron store:', token ? 'found' : 'not found');
+                }
+
+                // Fallback to localStorage
+                if (!token) {
+                    token = localStorage.getItem('bam_token') || localStorage.getItem('token');
+                    console.log('[Auth] Token from localStorage:', token ? 'found' : 'not found');
+                }
 
                 if (token) {
                     // Verify token with backend
@@ -53,24 +65,27 @@ export function AuthProvider({ children }) {
 
                     if (response.ok) {
                         const data = await response.json();
+                        console.log('[Auth] User verified:', data.user?.name);
                         setUser(data.user);
 
-                        // Also store in Electron if available
+                        // Store in both places for redundancy
+                        localStorage.setItem('bam_token', token);
+                        localStorage.setItem('token', token);
                         if (window.electronAPI) {
                             await window.electronAPI.auth.setUser(data.user);
                             await window.electronAPI.auth.setToken(token);
                         }
                     } else {
                         // Invalid token, clean up
+                        console.log('[Auth] Token invalid, cleaning up');
                         localStorage.removeItem('bam_token');
                         localStorage.removeItem('token');
+                        if (window.electronAPI) {
+                            await window.electronAPI.auth.logout();
+                        }
                     }
-                } else if (window.electronAPI) {
-                    // Try electron store as fallback
-                    const storedUser = await window.electronAPI.auth.getUser();
-                    if (storedUser) {
-                        setUser(storedUser);
-                    }
+                } else {
+                    console.log('[Auth] No token found');
                 }
             } catch (err) {
                 console.error('Failed to load user:', err);

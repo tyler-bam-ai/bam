@@ -330,12 +330,14 @@ router.get('/google/callback', async (req, res) => {
 
             console.log('[GOOGLE AUTH] Created new user:', user.email);
         } else {
-            // Update existing user's profile picture if they have a Google picture
-            if (googleUser.picture && !user.profile_picture) {
-                await db.prepare(`UPDATE users SET profile_picture = ? WHERE id = ?`).run(googleUser.picture, user.id);
-                user.profile_picture = googleUser.picture;
-            }
-            console.log('[GOOGLE AUTH] Existing user login:', user.email);
+            // Always update name and profile picture from Google
+            await db.prepare(`
+                UPDATE users SET name = ?, profile_picture = ?, google_id = COALESCE(google_id, ?)
+                WHERE id = ?
+            `).run(googleUser.name, googleUser.picture, googleUser.id, user.id);
+            user.name = googleUser.name;
+            user.profile_picture = googleUser.picture;
+            console.log('[GOOGLE AUTH] Updated existing user:', user.email, 'name:', user.name);
         }
 
         // Generate JWT token
