@@ -368,7 +368,7 @@ router.get('/google/url', (req, res) => {
     });
 });
 // Auth success page - for in-app OAuth flow
-// Stores token and auto-redirects to dashboard
+// Token is in URL - Electron will extract it via did-navigate handler
 router.get('/success', (req, res) => {
     const { token } = req.query;
 
@@ -376,7 +376,8 @@ router.get('/success', (req, res) => {
         return res.status(400).send('No token provided');
     }
 
-    // Serve an HTML page that stores the token and auto-redirects
+    // Simple page that Electron will intercept
+    // The did-navigate handler extracts token from URL before this page renders
     res.send(`
 <!DOCTYPE html>
 <html>
@@ -394,22 +395,16 @@ router.get('/success', (req, res) => {
             justify-content: center;
             color: #f8fafc;
         }
-        .container {
-            text-align: center;
-            padding: 2rem;
-        }
+        .container { text-align: center; padding: 2rem; }
         .spinner {
-            width: 48px;
-            height: 48px;
+            width: 48px; height: 48px;
             border: 4px solid rgba(139, 92, 246, 0.3);
             border-top-color: #8b5cf6;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin: 0 auto 1rem;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
         h2 { font-size: 1.25rem; font-weight: 500; }
     </style>
 </head>
@@ -419,18 +414,21 @@ router.get('/success', (req, res) => {
         <h2>Signing you in...</h2>
     </div>
     <script>
-        const token = "${token}";
+        // Token is: ${token.substring(0, 20)}...
+        // Electron's did-navigate handler should intercept this page
+        // and extract the token from the URL before we get here.
+        // If we're still here after 3 seconds, something went wrong.
+        console.log('[OAuth Success] Page loaded - Electron should intercept');
         
-        // Store token in localStorage
-        try {
-            localStorage.setItem('bam_token', token);
-            localStorage.setItem('token', token);
-        } catch(e) {
-            console.error('Failed to store token:', e);
-        }
-        
-        // Redirect to dashboard
-        window.location.href = '/dashboard';
+        // Fallback for non-Electron browsers (web app)
+        setTimeout(() => {
+            console.log('[OAuth Success] Fallback - storing token and redirecting');
+            try {
+                localStorage.setItem('bam_token', '${token}');
+                localStorage.setItem('token', '${token}');
+            } catch(e) {}
+            window.location.href = '/dashboard';
+        }, 3000);
     </script>
 </body>
 </html>
