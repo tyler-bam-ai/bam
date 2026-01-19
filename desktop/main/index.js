@@ -674,27 +674,31 @@ function createWindow() {
 app.whenReady().then(() => {
   console.log('App ready, starting services...');
 
-  // Setup auto-updater
+  // Setup auto-updater (won't crash if unavailable)
   setupAutoUpdater();
 
   // Create application menu
   createMenu();
 
-  // Start backend server in background
-  startBackendServer().catch(err => {
-    console.error('Backend failed to start:', err);
-  });
-
-  // Register IPC handlers
+  // Register IPC handlers FIRST
   require('./ipc-handlers')(ipcMain, null, store, desktopCapturer);
 
+  // Create window IMMEDIATELY so app is visible (don't wait for backend)
   createWindow();
   console.log('Window created');
 
   require('./ipc-handlers').updateMainWindow?.(mainWindow);
 
+  // Start backend server in background AFTER window is visible
+  // This prevents Windows "Not Responding" freeze
+  setImmediate(() => {
+    startBackendServer().catch(err => {
+      console.error('Backend failed to start:', err);
+    });
+  });
+
   // Check for updates on startup (optional - silent check)
-  if (app.isPackaged) {
+  if (app.isPackaged && autoUpdater) {
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch(err => {
         console.log('[UPDATER] Startup check failed:', err.message);
