@@ -337,10 +337,43 @@ function DocumentUploader({ isDemoMode }) {
     useEffect(() => {
         if (isDemoMode) {
             setFiles(DEMO_FILES);
+        } else if (selectedClient?.id) {
+            // Fetch existing knowledge items for this client
+            const fetchExistingItems = async () => {
+                try {
+                    const token = localStorage.getItem('token');
+                    const response = await fetch(`${API_URL}/api/knowledge/${selectedClient.id}`, {
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        const existingItems = (data.items || [])
+                            .filter(item => item.type === 'document')
+                            .map(item => ({
+                                id: item.id,
+                                name: item.title,
+                                size: 0,
+                                type: 'application/pdf',
+                                status: 'synced', // Mark as already in brain
+                                progress: 100,
+                                backendId: item.id,
+                                wordCount: item.wordCount,
+                                createdAt: item.createdAt
+                            }));
+                        setFiles(existingItems);
+                    } else {
+                        setFiles([]);
+                    }
+                } catch (err) {
+                    console.error('[BRAIN TRAINING] Error fetching existing items:', err);
+                    setFiles([]);
+                }
+            };
+            fetchExistingItems();
         } else {
             setFiles([]);
         }
-    }, [isDemoMode]);
+    }, [isDemoMode, selectedClient?.id]);
 
     const handleDrag = (e) => {
         e.preventDefault();
@@ -509,6 +542,12 @@ function DocumentUploader({ isDemoMode }) {
                                 )}
                                 {file.status === 'complete' && (
                                     <CheckCircle size={20} className="status-complete" />
+                                )}
+                                {file.status === 'synced' && (
+                                    <span className="status-synced">
+                                        <CheckCircle size={14} />
+                                        Added to Brains
+                                    </span>
                                 )}
                                 {file.status === 'error' && (
                                     <AlertCircle size={20} className="status-error" />

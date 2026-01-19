@@ -1254,3 +1254,16 @@
     margin-left: auto;
 }
 
+
+/* Synced status for items already in brain */
+.status-synced {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #10b981;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background: rgba(16, 185, 129, 0.15);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+}

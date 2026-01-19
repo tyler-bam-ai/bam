@@ -174,6 +174,7 @@ function AdminPanel() {
     const [showClientProfile, setShowClientProfile] = useState(false);
     const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
     const [knowledgeItems, setKnowledgeItems] = useState([]);
+    const [viewingItem, setViewingItem] = useState(null); // For viewing item content
     const [selectedClient, setSelectedClient] = useState(null);
     const [usageData, setUsageData] = useState(null);
     const [editMode, setEditMode] = useState(false);
@@ -342,6 +343,7 @@ function AdminPanel() {
         setShowKnowledgeModal(false);
         setSelectedClient(null);
         setKnowledgeItems([]);
+        setViewingItem(null);
     };
 
     const handleTestBrain = (client) => {
@@ -625,7 +627,12 @@ function AdminPanel() {
                         </div>
 
                         {/* Clients Table */}
-                        {filteredClients.length > 0 ? (
+                        {loading ? (
+                            <div className="loading-state">
+                                <div className="loading-spinner"></div>
+                                <p>Loading clients from Railway...</p>
+                            </div>
+                        ) : filteredClients.length > 0 ? (
                             <div className="clients-table">
                                 <div className="table-header">
                                     <span className="col-name">Client</span>
@@ -1106,14 +1113,24 @@ function AdminPanel() {
                         <div className="modal-header">
                             <h3>
                                 <FileText size={20} />
-                                Knowledge Items - {selectedClient.companyName}
+                                {viewingItem ? viewingItem.title : `Knowledge Items - ${selectedClient.companyName}`}
                             </h3>
                             <button className="btn btn-ghost btn-icon" onClick={closeKnowledgeModal}>
                                 <XCircle size={20} />
                             </button>
                         </div>
                         <div className="modal-body">
-                            {knowledgeItems.length === 0 ? (
+                            {viewingItem ? (
+                                /* Show item content */
+                                <div className="knowledge-item-content">
+                                    <div className="content-meta">
+                                        <span className="content-type">{viewingItem.type}</span>
+                                        <span className="content-words">{viewingItem.wordCount} words</span>
+                                        <span className="content-date">{new Date(viewingItem.createdAt).toLocaleDateString()}</span>
+                                    </div>
+                                    <pre className="content-text">{viewingItem.content || 'No content available'}</pre>
+                                </div>
+                            ) : knowledgeItems.length === 0 ? (
                                 <div className="empty-state">
                                     <FileText size={48} />
                                     <h3>No Knowledge Items</h3>
@@ -1122,7 +1139,11 @@ function AdminPanel() {
                             ) : (
                                 <div className="knowledge-items-list">
                                     {knowledgeItems.map(item => (
-                                        <div key={item.id} className="knowledge-item">
+                                        <div
+                                            key={item.id}
+                                            className="knowledge-item clickable"
+                                            onClick={() => setViewingItem(item)}
+                                        >
                                             <div className="knowledge-item-icon">
                                                 <FileText size={24} />
                                             </div>
@@ -1142,6 +1163,11 @@ function AdminPanel() {
                             )}
                         </div>
                         <div className="modal-footer">
+                            {viewingItem ? (
+                                <button className="btn btn-secondary" onClick={() => setViewingItem(null)}>
+                                    ← Back to List
+                                </button>
+                            ) : null}
                             <button className="btn btn-ghost" onClick={closeKnowledgeModal}>
                                 Close
                             </button>
