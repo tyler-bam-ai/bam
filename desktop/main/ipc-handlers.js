@@ -200,6 +200,19 @@ function registerHandlers(ipcMain, mainWindow, store, desktopCapturerModule) {
 
         return { filePath: result.filePaths[0] };
     });
+
+    // ============================================
+    // Shell (Open External URLs)
+    // ============================================
+
+    ipcMain.handle('shell:open-external', async (event, url) => {
+        const { shell } = require('electron');
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+            await shell.openExternal(url);
+            return true;
+        }
+        return false;
+    });
 }
 
 // Export function and updateMainWindow helper

@@ -17,6 +17,8 @@ function Login() {
     const [companyName, setCompanyName] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [localError, setLocalError] = useState('');
+    const [showTokenInput, setShowTokenInput] = useState(false);
+    const [tokenInput, setTokenInput] = useState('');
 
     // Redirect if already logged in
     if (user) {
@@ -75,12 +77,47 @@ function Login() {
             const response = await fetch(`${API_URL}/api/auth/google/url`);
             if (response.ok) {
                 const { url } = await response.json();
-                window.location.href = url;
+                // Open in external browser instead of navigating the app
+                if (window.electronAPI?.openExternal) {
+                    window.electronAPI.openExternal(url);
+                    setLocalError('');
+                    // Show token input after opening external browser
+                    setShowTokenInput(true);
+                } else {
+                    // Fallback for web - navigate directly
+                    window.location.href = url;
+                }
             } else {
                 setLocalError('Google login not configured');
             }
         } catch (err) {
             setLocalError('Failed to connect to server');
+        }
+    };
+
+    // Handle token from OAuth success page
+    const handleTokenSubmit = async () => {
+        if (!tokenInput.trim()) {
+            setLocalError('Please paste your token');
+            return;
+        }
+
+        try {
+            // Verify the token
+            const response = await fetch(`${API_URL}/api/auth/verify`, {
+                headers: { 'Authorization': `Bearer ${tokenInput.trim()}` }
+            });
+
+            if (response.ok) {
+                // Store and use the token
+                localStorage.setItem('bam_token', tokenInput.trim());
+                localStorage.setItem('token', tokenInput.trim());
+                window.location.href = '/dashboard';
+            } else {
+                setLocalError('Invalid token. Please try again.');
+            }
+        } catch (err) {
+            setLocalError('Failed to verify token');
         }
     };
 
@@ -233,7 +270,7 @@ function Login() {
                     <button
                         className="btn btn-secondary btn-lg google-login-btn"
                         onClick={handleGoogleLogin}
-                        disabled={loading}
+                        disabled={loading || showTokenInput}
                         type="button"
                     >
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -244,6 +281,40 @@ function Login() {
                         </svg>
                         {mode === 'signup' ? 'Sign up with Google' : 'Sign in with Google'}
                     </button>
+
+                    {/* Token input - shown after Google auth opens in browser */}
+                    {showTokenInput && (
+                        <div className="token-input-section">
+                            <p className="token-instructions">
+                                Complete Google sign-in in your browser, then paste the token here:
+                            </p>
+                            <div className="input-group" style={{ marginBottom: '0.75rem' }}>
+                                <input
+                                    type="text"
+                                    className="input"
+                                    placeholder="Paste your token here..."
+                                    value={tokenInput}
+                                    onChange={(e) => setTokenInput(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleTokenSubmit}
+                                    disabled={!tokenInput.trim()}
+                                >
+                                    Sign In
+                                </button>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => { setShowTokenInput(false); setTokenInput(''); }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Demo Accounts */}

@@ -52,6 +52,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         getPlatform: () => ipcRenderer.invoke('app:get-platform')
     },
 
+    // Open URL in external browser (for OAuth etc)
+    openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+
     // Update Status Listener
     onUpdateStatus: (callback) => {
         ipcRenderer.on('update-status', callback);

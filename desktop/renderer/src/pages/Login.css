@@ -365,3 +365,18 @@
     font-size: var(--font-size-xs);
     color: var(--color-text-muted);
 }
+/* Token input section for Google OAuth */
+.token-input-section {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: rgba(139, 92, 246, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.token-instructions {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    text-align: center;
+}
