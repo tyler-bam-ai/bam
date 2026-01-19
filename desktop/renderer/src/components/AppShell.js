@@ -248,9 +248,18 @@ function AppShell() {
                 <div className="sidebar-footer">
                     {!sidebarCollapsed && (
                         <div className="user-info-row">
-                            <div className="user-avatar">
-                                {user?.name?.charAt(0) || 'U'}
-                            </div>
+                            {user?.profilePicture ? (
+                                <img
+                                    src={user.profilePicture}
+                                    alt={user?.name || 'User'}
+                                    className="user-avatar-img"
+                                    referrerPolicy="no-referrer"
+                                />
+                            ) : (
+                                <div className="user-avatar">
+                                    {user?.name?.charAt(0) || 'U'}
+                                </div>
+                            )}
                             <div className="user-details">
                                 <span className="user-name">{user?.name}</span>
                                 <span className="user-role">{user?.role?.replace('_', ' ')}</span>

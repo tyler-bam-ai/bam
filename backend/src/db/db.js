@@ -570,6 +570,18 @@ function initializeSchema() {
         console.log('[DB] Migration check for google_id failed (may already exist):', err.message);
     }
 
+    // Migration: Add profile_picture column if it doesn't exist
+    try {
+        const columns = all("PRAGMA table_info(users)");
+        const hasProfilePicture = columns.some(col => col.name === 'profile_picture');
+        if (!hasProfilePicture) {
+            db.run("ALTER TABLE users ADD COLUMN profile_picture TEXT");
+            console.log('[DB] Migration: Added profile_picture column to users table');
+        }
+    } catch (err) {
+        console.log('[DB] Migration check for profile_picture failed:', err.message);
+    }
+
     saveDatabase();
     console.log('✅ Database schema initialized');
 }

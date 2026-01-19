@@ -205,6 +205,7 @@ router.get('/me', async (req, res) => {
                 role: user.role,
                 companyId: user.company_id,
                 companyName: user.company_name,
+                profilePicture: user.profile_picture,
                 company: {
                     id: user.company_id,
                     name: user.company_name,
@@ -290,7 +291,7 @@ router.get('/google/callback', async (req, res) => {
         }
 
         const googleUser = await userInfoResponse.json();
-        console.log('[GOOGLE AUTH] User info:', googleUser.email, googleUser.name);
+        console.log('[GOOGLE AUTH] User info:', googleUser.email, googleUser.name, 'picture:', googleUser.picture);
 
         // Check if user exists
         let user = await db.prepare(`
@@ -311,11 +312,11 @@ router.get('/google/callback', async (req, res) => {
                 VALUES (?, ?, ?, ?)
             `).run(companyId, `${googleUser.name}'s Company`, 'starter', 'active');
 
-            // Create user (no password for OAuth users)
+            // Create user with profile picture
             await db.prepare(`
-                INSERT INTO users (id, email, password_hash, name, role, company_id, google_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(userId, googleUser.email.toLowerCase(), '', googleUser.name, 'client_admin', companyId, googleUser.id);
+                INSERT INTO users (id, email, password_hash, name, role, company_id, google_id, profile_picture)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(userId, googleUser.email.toLowerCase(), '', googleUser.name, 'client_admin', companyId, googleUser.id, googleUser.picture);
 
             user = {
                 id: userId,
@@ -323,11 +324,17 @@ router.get('/google/callback', async (req, res) => {
                 name: googleUser.name,
                 role: 'client_admin',
                 company_id: companyId,
-                company_name: `${googleUser.name}'s Company`
+                company_name: `${googleUser.name}'s Company`,
+                profile_picture: googleUser.picture
             };
 
             console.log('[GOOGLE AUTH] Created new user:', user.email);
         } else {
+            // Update existing user's profile picture if they have a Google picture
+            if (googleUser.picture && !user.profile_picture) {
+                await db.prepare(`UPDATE users SET profile_picture = ? WHERE id = ?`).run(googleUser.picture, user.id);
+                user.profile_picture = googleUser.picture;
+            }
             console.log('[GOOGLE AUTH] Existing user login:', user.email);
         }
 

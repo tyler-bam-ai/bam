@@ -590,3 +590,12 @@
     margin-left: auto;
     color: rgba(248, 250, 252, 0.5);
 }
+
+/* Profile picture for Google OAuth users */
+.user-avatar-img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--border-color);
+}
