@@ -558,6 +558,18 @@ function initializeSchema() {
         CREATE INDEX IF NOT EXISTS idx_social_accounts_company ON social_accounts(company_id);
     `);
 
+    // Migration: Add google_id column if it doesn't exist (for existing databases)
+    try {
+        const columns = all("PRAGMA table_info(users)");
+        const hasGoogleId = columns.some(col => col.name === 'google_id');
+        if (!hasGoogleId) {
+            db.run("ALTER TABLE users ADD COLUMN google_id TEXT");
+            console.log('[DB] Migration: Added google_id column to users table');
+        }
+    } catch (err) {
+        console.log('[DB] Migration check for google_id failed (may already exist):', err.message);
+    }
+
     saveDatabase();
     console.log('✅ Database schema initialized');
 }
