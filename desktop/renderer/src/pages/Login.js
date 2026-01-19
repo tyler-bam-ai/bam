@@ -77,16 +77,8 @@ function Login() {
             const response = await fetch(`${API_URL}/api/auth/google/url`);
             if (response.ok) {
                 const { url } = await response.json();
-                // Open in external browser instead of navigating the app
-                if (window.electronAPI?.openExternal) {
-                    window.electronAPI.openExternal(url);
-                    setLocalError('');
-                    // Show token input after opening external browser
-                    setShowTokenInput(true);
-                } else {
-                    // Fallback for web - navigate directly
-                    window.location.href = url;
-                }
+                // Navigate to Google OAuth within the app
+                window.location.href = url;
             } else {
                 setLocalError('Google login not configured');
             }

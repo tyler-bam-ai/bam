@@ -367,9 +367,8 @@ router.get('/google/url', (req, res) => {
         url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
     });
 });
-
-// Auth success page - for Electron app OAuth flow
-// This page is shown after successful Google OAuth and contains the token
+// Auth success page - for in-app OAuth flow
+// Stores token and auto-redirects to dashboard
 router.get('/success', (req, res) => {
     const { token } = req.query;
 
@@ -377,17 +376,13 @@ router.get('/success', (req, res) => {
         return res.status(400).send('No token provided');
     }
 
-    // Serve an HTML page that:
-    // 1. Shows success message
-    // 2. Stores token in localStorage (for web)
-    // 3. Provides the token in a way Electron can capture
+    // Serve an HTML page that stores the token and auto-redirects
     res.send(`
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Sign In Successful - BAM.ai</title>
+    <title>Signing in... - BAM.ai</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -402,87 +397,40 @@ router.get('/success', (req, res) => {
         .container {
             text-align: center;
             padding: 2rem;
-            background: rgba(255,255,255,0.05);
-            border-radius: 16px;
-            border: 1px solid rgba(255,255,255,0.1);
-            max-width: 400px;
         }
-        .success-icon {
-            width: 64px;
-            height: 64px;
-            background: linear-gradient(135deg, #10b981, #059669);
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(139, 92, 246, 0.3);
+            border-top-color: #8b5cf6;
             border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1.5rem;
-            font-size: 32px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
         }
-        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
-        p { color: #94a3b8; margin-bottom: 1.5rem; }
-        .token-box {
-            background: rgba(0,0,0,0.3);
-            padding: 1rem;
-            border-radius: 8px;
-            word-break: break-all;
-            font-family: monospace;
-            font-size: 0.75rem;
-            color: #64748b;
-            margin-bottom: 1rem;
-            max-height: 100px;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
-        .btn {
-            background: linear-gradient(135deg, #8b5cf6, #6366f1);
-            color: white;
-            border: none;
-            padding: 0.75rem 2rem;
-            border-radius: 8px;
-            font-size: 1rem;
-            cursor: pointer;
-            margin: 0.25rem;
-        }
-        .btn:hover { opacity: 0.9; }
-        .btn-secondary {
-            background: rgba(255,255,255,0.1);
-        }
-        .note {
-            font-size: 0.75rem;
-            color: #64748b;
-            margin-top: 1rem;
-        }
+        h2 { font-size: 1.25rem; font-weight: 500; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="success-icon">✓</div>
-        <h1>Sign In Successful!</h1>
-        <p>You've been signed in with Google.</p>
-        <div class="token-box" id="tokenDisplay">${token.substring(0, 50)}...</div>
-        <button class="btn" onclick="copyToken()">Copy Token</button>
-        <button class="btn btn-secondary" onclick="window.close()">Close Window</button>
-        <p class="note">Paste this token in the BAM.ai app to complete sign-in.</p>
+        <div class="spinner"></div>
+        <h2>Signing you in...</h2>
     </div>
     <script>
         const token = "${token}";
         
-        // Store in localStorage for web app
+        // Store token in localStorage
         try {
             localStorage.setItem('bam_token', token);
             localStorage.setItem('token', token);
-        } catch(e) {}
-        
-        // For Electron: post message to parent
-        try {
-            window.opener?.postMessage({ type: 'oauth-success', token }, '*');
-        } catch(e) {}
-        
-        function copyToken() {
-            navigator.clipboard.writeText(token).then(() => {
-                alert('Token copied! Paste it in the BAM.ai app.');
-            });
+        } catch(e) {
+            console.error('Failed to store token:', e);
         }
+        
+        // Redirect to dashboard
+        window.location.href = '/dashboard';
     </script>
 </body>
 </html>

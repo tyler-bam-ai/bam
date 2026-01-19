@@ -433,6 +433,27 @@ function createWindow() {
     console.log('Page finished loading');
   });
 
+  // Handle OAuth redirects: intercept navigation to Railway paths 
+  // like /dashboard after OAuth and reload the local React app
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    console.log('[NAV] Will navigate to:', url);
+
+    // Check if navigating to Railway backend's /dashboard (after OAuth)
+    // Railway URLs contain 'railway.app' in the hostname
+    if (url.includes('railway.app/dashboard') || url.includes('railway.app/login')) {
+      console.log('[NAV] Intercepting Railway redirect, reloading local app');
+      event.preventDefault();
+
+      // Reload the local React app - it will pick up token from localStorage
+      if (app.isPackaged) {
+        const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+        mainWindow.loadFile(indexPath);
+      } else {
+        mainWindow.loadURL('http://localhost:3000');
+      }
+    }
+  });
+
   if (app.isPackaged) {
     const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
     console.log('Loading packaged app from:', indexPath);
