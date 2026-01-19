@@ -120,6 +120,26 @@ router.get('/health', (req, res) => {
     });
 });
 
+/**
+ * Debug: List all users (temporary - remove in production)
+ * GET /api/system/debug/users
+ */
+router.get('/debug/users', async (req, res) => {
+    try {
+        const { db } = require('../db/db');
+        const users = await db.all('SELECT id, email, name, role, company_id, google_id, created_at FROM users');
+        const companies = await db.all('SELECT id, name, plan, status, created_at FROM companies');
+        res.json({
+            users: users || [],
+            companies: companies || [],
+            count: { users: users?.length || 0, companies: companies?.length || 0 }
+        });
+    } catch (error) {
+        console.error('[Debug] Error listing users:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 const fs = require('fs');
 const path = require('path');
 
