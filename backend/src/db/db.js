@@ -114,6 +114,7 @@ async function initializePostgresSchema() {
                 role TEXT NOT NULL DEFAULT 'knowledge_consumer',
                 company_id TEXT,
                 google_id TEXT,
+                profile_picture TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -192,6 +193,18 @@ async function initializePostgresSchema() {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+
+        // Migration: Add profile_picture column if it doesn't exist
+        try {
+            await client.query(`
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture TEXT;
+            `);
+            console.log('[DB] PostgreSQL migration: Ensured profile_picture column exists');
+        } catch (err) {
+            // Column might already exist, that's OK
+            console.log('[DB] PostgreSQL profile_picture migration skipped:', err.message);
+        }
+
         console.log('[DB] PostgreSQL schema initialized');
     } finally {
         client.release();
@@ -317,6 +330,7 @@ function initializeSchema() {
             role TEXT NOT NULL DEFAULT 'knowledge_consumer',
             company_id TEXT,
             google_id TEXT,
+            profile_picture TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
