@@ -153,7 +153,8 @@ router.post('/voice', optionalAuth, upload.single('audio'), async (req, res) => 
                 title: itemTitle,
                 type: 'voice_memo',
                 wordCount: transcription.split(/\s+/).filter(w => w).length,
-                transcription: transcription.substring(0, 200) + (transcription.length > 200 ? '...' : '')
+                transcription: transcription,  // Return FULL transcription for saving
+                preview: transcription.substring(0, 200) + (transcription.length > 200 ? '...' : '')
             }
         });
     } catch (error) {
