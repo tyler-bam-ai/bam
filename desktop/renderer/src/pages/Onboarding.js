@@ -1492,7 +1492,7 @@ function Onboarding() {
             setFullTranscript(newTranscript);
             setShowTranscriptUpload(false);
             setUploadedTranscript('');
-            showToast('✅ Transcript added! It will be saved when you click Complete & Save.', 'success', 3000);
+            showToast('✅ Transcript added! It will be saved when you click Save.', 'success', 3000);
             console.log('[TRANSCRIPT] Appended to pending transcript. Total length:', newTranscript.length);
             return;
         }
@@ -1579,14 +1579,76 @@ function Onboarding() {
         setShowTranscriptUpload(false);
     };
 
-    const handleNext = () => {
+    // Create a transcription savepoint without stopping recording
+    // This transcribes everything so far and continues recording
+    const createTranscriptionSavepoint = async () => {
+        if (!isRecording || audioChunksRef.current.length === 0) return;
+
+        const currentStep = STEPS[currentStep]?.title || 'Section';
+        console.log(`[SAVEPOINT] Creating savepoint for "${currentStep}"...`);
+        setTranscriptionStatus('processing');
+
+        try {
+            // Get current audio chunks
+            const chunks = [...audioChunksRef.current];
+            const mimeType = recordingLoopRef.current?.mimeType || 'audio/webm';
+            const audioBlob = new Blob(chunks, { type: mimeType });
+
+            if (audioBlob.size < 1000) {
+                console.log('[SAVEPOINT] Not enough audio for savepoint');
+                return;
+            }
+
+            // Send to Whisper
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'savepoint.webm');
+            formData.append('model', 'whisper-1');
+            formData.append('language', 'en');
+
+            const openaiKey = localStorage.getItem('openai_api_key');
+            if (!openaiKey) return;
+
+            const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${openaiKey}` },
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.text?.trim()) {
+                    const newText = data.text.trim();
+                    // Append to full transcript
+                    const separator = fullTranscriptRef.current ? '\n\n--- Tab Savepoint ---\n\n' : '';
+                    fullTranscriptRef.current = (fullTranscriptRef.current || '') + separator + newText;
+                    setFullTranscript(fullTranscriptRef.current);
+                    setLiveTranscript(fullTranscriptRef.current);
+                    console.log(`[SAVEPOINT] Transcribed ${newText.split(' ').length} words`);
+                }
+            }
+        } catch (error) {
+            console.error('[SAVEPOINT] Error:', error);
+        } finally {
+            setTranscriptionStatus('listening');
+        }
+    };
+
+    const handleNext = async () => {
         if (currentStep < STEPS.length - 1) {
+            // Create savepoint if recording
+            if (isRecording && audioChunksRef.current.length > 0) {
+                await createTranscriptionSavepoint();
+            }
             setCurrentStep(currentStep + 1);
         }
     };
 
-    const handlePrev = () => {
+    const handlePrev = async () => {
         if (currentStep > 0) {
+            // Create savepoint if recording
+            if (isRecording && audioChunksRef.current.length > 0) {
+                await createTranscriptionSavepoint();
+            }
             setCurrentStep(currentStep - 1);
         }
     };
@@ -1753,20 +1815,18 @@ function Onboarding() {
                 </button>
                 <button className="btn btn-ghost" onClick={exportToJSON}>
                     <Download size={18} />
-                    Export JSON
+                    Export
                 </button>
                 <button
-                    className={`btn ${clientSaved ? 'btn-success' : 'btn-primary'}`}
+                    className="btn btn-primary"
                     onClick={saveClientToDatabase}
-                    disabled={isSavingClient || clientSaved}
+                    disabled={isSavingClient}
                     title="Save client to database"
                 >
                     {isSavingClient ? (
                         <>Saving...</>
-                    ) : clientSaved ? (
-                        <>✓ Client Saved</>
                     ) : (
-                        <>💾 Complete & Save Client</>
+                        <><Save size={18} /> Save</>
                     )}
                 </button>
             </div>
@@ -1964,24 +2024,11 @@ function Onboarding() {
                 </div>
 
                 {isRecording && (
-                    <div className="transcription-status-bar">
-                        <div className={`status-indicator ${transcriptionStatus}`}>
-                            <span className="status-dot"></span>
-                            {transcriptionStatus === 'listening' && 'Listening...'}
-                            {transcriptionStatus === 'processing' && 'Processing answer...'}
-                            {transcriptionStatus === 'idle' && 'Paused'}
-                        </div>
-                        {focusedQuestion && (
-                            <span className="focused-question-hint">
-                                Click a question to target transcription
-                            </span>
-                        )}
-                        {liveTranscript && (
-                            <div className="live-transcript-preview">
-                                "{liveTranscript.slice(-100)}..."
-                            </div>
-                        )}
-                    </div>
+                    <span className="transcription-status-inline">
+                        {transcriptionStatus === 'listening' && '🎙️ Listening...'}
+                        {transcriptionStatus === 'processing' && '⏳ Transcribing...'}
+                        {transcriptionStatus === 'idle' && '⏸️ Paused'}
+                    </span>
                 )}
 
                 <div className="interview-questions">
@@ -2439,13 +2486,13 @@ function Onboarding() {
                 {(
                     <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
                         <button
-                            className={`btn ${clientSaved ? 'btn-success' : 'btn-primary'}`}
+                            className="btn btn-primary"
                             onClick={saveClientToDatabase}
                             disabled={isSavingClient}
                             title="Save client to database"
                         >
                             {isSavingClient ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
-                            {clientSaved ? 'Saved!' : 'Save Client'}
+                            Save
                         </button>
                         <button
                             className="btn btn-ghost"
@@ -2453,7 +2500,7 @@ function Onboarding() {
                             title="Download client profile as HTML"
                         >
                             <Download size={16} />
-                            Export PDF
+                            Export
                         </button>
                     </div>
                 )}

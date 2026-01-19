@@ -1503,3 +1503,11 @@
     color: white !important;
     opacity: 0.8;
 }
+/* Inline transcription status - small text that doesn't shift layout */
+.transcription-status-inline {
+    display: inline-block;
+    font-size: 0.75rem;
+    color: rgba(248, 250, 252, 0.7);
+    margin-left: 1rem;
+    vertical-align: middle;
+}
