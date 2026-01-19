@@ -428,20 +428,25 @@ router.get('/success', (req, res) => {
     </div>
     <script>
         // Token is: ${token.substring(0, 20)}...
-        // Electron's did-navigate handler should intercept this page
-        // and extract the token from the URL before we get here.
-        // If we're still here after 3 seconds, something went wrong.
-        console.log('[OAuth Success] Page loaded - Electron should intercept');
+        // Electron's did-finish-load handler will detect this page and extract the token
+        console.log('[OAuth Success] Page loaded - waiting for Electron to intercept');
+        console.log('[OAuth Success] Current URL:', window.location.href);
         
-        // Fallback for non-Electron browsers (web app)
+        // Give Electron plenty of time to intercept before showing fallback
         setTimeout(() => {
-            console.log('[OAuth Success] Fallback - storing token and redirecting');
+            console.log('[OAuth Success] Still here after timeout - Electron may not have intercepted');
+            // For non-Electron browsers, store token and reload
             try {
                 localStorage.setItem('bam_token', '${token}');
                 localStorage.setItem('token', '${token}');
-            } catch(e) {}
-            window.location.href = '/dashboard';
-        }, 3000);
+                console.log('[OAuth Success] Token stored in localStorage');
+            } catch(e) {
+                console.error('[OAuth Success] Failed to store token:', e);
+            }
+            
+            // Show message instead of redirecting to broken /dashboard
+            document.querySelector('.container').innerHTML = '<h2>✓ Sign in successful!</h2><p style="margin-top:1rem;color:#94a3b8;">The app should have reloaded automatically.<br>If not, please close this window and reopen the app.</p>';
+        }, 5000);
     </script>
 </body>
 </html>

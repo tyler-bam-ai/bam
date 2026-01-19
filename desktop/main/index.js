@@ -430,7 +430,47 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
-    console.log('Page finished loading');
+    const currentUrl = mainWindow.webContents.getURL();
+    console.log('[NAV] Page finished loading:', currentUrl);
+
+    // Check if we landed on OAuth success page (fallback if other handlers didn't catch it)
+    if (currentUrl.includes('/api/auth/success') && currentUrl.includes('token=')) {
+      console.log('[NAV] *** CAUGHT OAUTH SUCCESS IN DID-FINISH-LOAD ***');
+
+      const urlObj = new URL(currentUrl);
+      const token = urlObj.searchParams.get('token');
+
+      if (token) {
+        console.log('[NAV] Token found, storing and reloading app');
+        store.set('authToken', token);
+
+        // Load local app
+        const loadAndInjectToken = async () => {
+          if (app.isPackaged) {
+            const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
+            await mainWindow.loadFile(indexPath);
+          } else {
+            await mainWindow.loadURL('http://localhost:3000');
+          }
+
+          // Wait for new page to load, then inject token
+          mainWindow.webContents.once('did-finish-load', () => {
+            const newUrl = mainWindow.webContents.getURL();
+            // Only inject if we're no longer on the success page
+            if (!newUrl.includes('/api/auth/success')) {
+              mainWindow.webContents.executeJavaScript(`
+                localStorage.setItem('bam_token', '${token}');
+                localStorage.setItem('token', '${token}');
+                console.log('[OAuth] Token injected from Electron, reloading...');
+                window.location.reload();
+              `);
+            }
+          });
+        };
+
+        loadAndInjectToken();
+      }
+    }
   });
 
   // Handle OAuth: catch server redirects and page navigation
