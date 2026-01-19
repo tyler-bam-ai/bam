@@ -63,8 +63,11 @@ router.post('/', authMiddleware, requireRole('bam_admin'), (req, res) => {
  * Create a new client from onboarding session
  * POST /api/clients/from-onboarding
  * This saves ALL onboarding data including responses AND full transcript
+ * AND creates a user account with email as password for easy testing
  */
-router.post('/from-onboarding', (req, res) => {
+router.post('/from-onboarding', async (req, res) => {
+    const bcrypt = require('bcrypt');
+
     try {
         const {
             companyName,
@@ -85,7 +88,17 @@ router.post('/from-onboarding', (req, res) => {
             });
         }
 
-        const id = uuidv4();
+        // Check if user already exists
+        if (contactEmail) {
+            const existingUser = await db.get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [contactEmail]);
+            if (existingUser) {
+                return res.status(400).json({
+                    error: `An account already exists for ${contactEmail}. They can log in with their existing credentials.`
+                });
+            }
+        }
+
+        const companyId = uuidv4();
 
         // Store all onboarding data in settings JSON
         const settings = JSON.stringify({
@@ -114,25 +127,44 @@ router.post('/from-onboarding', (req, res) => {
             }
         });
 
-        db.prepare(`
-            INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, companyName, industry || null, pricingPlan || 'starter', 'active', contactName || null, contactEmail || null, settings);
+        await db.run(`
+            INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'))
+        `, [companyId, companyName, industry || null, pricingPlan || 'starter', contactName || null, contactEmail || null, settings]);
+
+        console.log(`[ONBOARDING] Created company: ${companyName} (${companyId})`);
+
+        // Create user account with email as password for easy testing
+        let userId = null;
+        let temporaryPassword = null;
+
+        if (contactEmail) {
+            temporaryPassword = contactEmail; // Email is the password for testing
+            const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+            userId = uuidv4();
+
+            await db.run(`
+                INSERT INTO users (id, email, password_hash, name, role, company_id, created_at)
+                VALUES (?, ?, ?, ?, 'client_admin', ?, datetime('now'))
+            `, [userId, contactEmail.toLowerCase(), passwordHash, contactName || contactEmail.split('@')[0], companyId]);
+
+            console.log(`[ONBOARDING] Created user: ${contactEmail} (${userId})`);
+        }
 
         // Save individual responses to onboarding_responses table for easier querying
-        Object.entries(responses).forEach(([questionId, response]) => {
+        for (const [questionId, response] of Object.entries(responses)) {
             if (response && response.trim()) {
                 const responseId = uuidv4();
                 try {
-                    db.prepare(`
+                    await db.run(`
                         INSERT INTO onboarding_responses (id, company_id, section, question_id, response)
                         VALUES (?, ?, ?, ?, ?)
-                    `).run(responseId, id, 'interview', questionId, response);
+                    `, [responseId, companyId, 'interview', questionId, response]);
                 } catch (e) {
                     console.warn(`Failed to save response ${questionId}:`, e.message);
                 }
             }
-        });
+        }
 
         // Save the full transcript as a knowledge item for BAM Brains
         if (transcript && transcript.trim()) {
@@ -145,18 +177,18 @@ router.post('/from-onboarding', (req, res) => {
             });
 
             try {
-                db.prepare(`
+                await db.run(`
                     INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                `).run(
+                `, [
                     transcriptId,
-                    id,
+                    companyId,
                     'transcript',
                     `${companyName} - Onboarding Interview Transcript`,
                     transcript,
                     'ready',
                     transcriptMetadata
-                );
+                ]);
                 console.log(`[ONBOARDING] Saved transcript as knowledge item: ${transcriptId}`);
             } catch (e) {
                 console.warn('Failed to save transcript as knowledge item:', e.message);
@@ -176,18 +208,18 @@ router.post('/from-onboarding', (req, res) => {
                 });
 
                 try {
-                    db.prepare(`
+                    await db.run(`
                         INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
-                    `).run(
+                    `, [
                         qaId,
-                        id,
+                        companyId,
                         'qa_summary',
                         `${companyName} - Onboarding Q&A Summary`,
                         qaSummary,
                         'ready',
                         qaMetadata
-                    );
+                    ]);
                     console.log(`[ONBOARDING] Saved Q&A summary as knowledge item: ${qaId}`);
                 } catch (e) {
                     console.warn('Failed to save Q&A summary as knowledge item:', e.message);
@@ -195,20 +227,22 @@ router.post('/from-onboarding', (req, res) => {
             }
         }
 
-        const client = db.prepare('SELECT * FROM companies WHERE id = ?').get(id);
+        const client = await db.get('SELECT * FROM companies WHERE id = ?', [companyId]);
 
-        console.log(`[ONBOARDING] Created new client: ${companyName} (${id}) with ${transcript ? 'transcript' : 'no transcript'}`);
+        console.log(`[ONBOARDING] Completed: ${companyName} (user: ${contactEmail || 'none'})`);
 
         res.status(201).json({
             success: true,
             message: `Client "${companyName}" created successfully`,
             client: formatClient(client),
-            clientId: id,
+            clientId: companyId,
+            userId,
+            temporaryPassword, // Return so UI can show credentials popup
             hasTranscript: !!transcript
         });
     } catch (error) {
         console.error('Create client from onboarding error:', error);
-        res.status(500).json({ error: 'Failed to create client from onboarding' });
+        res.status(500).json({ error: 'Failed to create client from onboarding: ' + error.message });
     }
 });
 

@@ -1257,6 +1257,8 @@ function Onboarding() {
     // Save client to database after completing onboarding
     const [isSavingClient, setIsSavingClient] = useState(false);
     const [clientSaved, setClientSaved] = useState(false);
+    const [showCredentialsPopup, setShowCredentialsPopup] = useState(false);
+    const [savedCredentials, setSavedCredentials] = useState({ email: '', password: '' });
 
     const saveClientToDatabase = async () => {
         console.log('[SAVE] === SAVE STARTED ===');
@@ -1362,8 +1364,17 @@ function Onboarding() {
                 const transcriptMsg = data.hasTranscript ? ' (with transcript)' : '';
                 setDebugMessage(`✅ Client "${sessionData.companyName}" saved to database${transcriptMsg}!`);
 
-                // Use toast instead of alert - alert blocks focus on Windows
-                showToast(`🎉 Client "${sessionData.companyName}" created successfully!${transcriptMsg}`, 'success', 5000);
+                // Show credentials popup if user was created
+                if (data.temporaryPassword && sessionData.contactEmail) {
+                    setSavedCredentials({
+                        email: sessionData.contactEmail,
+                        password: data.temporaryPassword
+                    });
+                    setShowCredentialsPopup(true);
+                } else {
+                    // Just show success toast if no user created
+                    showToast(`🎉 Client "${sessionData.companyName}" created successfully!${transcriptMsg}`, 'success', 5000);
+                }
 
                 // Clear local autosave since we've saved to DB
                 localStorage.removeItem(AUTOSAVE_KEY);
@@ -2514,6 +2525,107 @@ function Onboarding() {
                 <div className="toast toast-success">
                     <CheckCircle size={18} />
                     Data exported successfully!
+                </div>
+            )}
+
+            {/* Credentials Popup Modal */}
+            {showCredentialsPopup && (
+                <div className="modal-overlay" onClick={() => setShowCredentialsPopup(false)}>
+                    <div className="modal-content credentials-modal" onClick={e => e.stopPropagation()}>
+                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                            <CheckCircle size={48} style={{ color: 'var(--color-success)', marginBottom: '12px' }} />
+                            <h3 style={{ margin: '0 0 8px 0' }}>Client Created Successfully!</h3>
+                            <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>
+                                Share these login credentials with {sessionData.companyName}
+                            </p>
+                        </div>
+
+                        <div style={{
+                            background: 'var(--color-surface-elevated)',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            marginBottom: '16px'
+                        }}>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '0.75rem',
+                                    color: 'var(--color-text-tertiary)',
+                                    marginBottom: '4px'
+                                }}>Email (Username)</label>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    background: 'var(--color-background)',
+                                    padding: '10px 12px',
+                                    borderRadius: '6px',
+                                    fontFamily: 'monospace'
+                                }}>
+                                    <span style={{ flex: 1 }}>{savedCredentials.email}</span>
+                                    <button
+                                        className="btn btn-ghost"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(savedCredentials.email);
+                                            showToast('Email copied!', 'success', 2000);
+                                        }}
+                                        style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                                    >
+                                        Copy
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{
+                                    display: 'block',
+                                    fontSize: '0.75rem',
+                                    color: 'var(--color-text-tertiary)',
+                                    marginBottom: '4px'
+                                }}>Temporary Password</label>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    background: 'var(--color-background)',
+                                    padding: '10px 12px',
+                                    borderRadius: '6px',
+                                    fontFamily: 'monospace'
+                                }}>
+                                    <span style={{ flex: 1 }}>{savedCredentials.password}</span>
+                                    <button
+                                        className="btn btn-ghost"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(savedCredentials.password);
+                                            showToast('Password copied!', 'success', 2000);
+                                        }}
+                                        style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                                    >
+                                        Copy
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p style={{
+                            fontSize: '0.85rem',
+                            color: 'var(--color-text-tertiary)',
+                            textAlign: 'center',
+                            marginBottom: '16px'
+                        }}>
+                            The client can change their password in Settings → Security after logging in.
+                        </p>
+
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => setShowCredentialsPopup(false)}
+                                style={{ minWidth: '120px' }}
+                            >
+                                Done
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
