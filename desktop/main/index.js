@@ -653,7 +653,33 @@ function createWindow() {
   if (app.isPackaged) {
     const indexPath = path.join(app.getAppPath(), 'renderer', 'build', 'index.html');
     console.log('Loading packaged app from:', indexPath);
-    mainWindow.loadFile(indexPath);
+    const fs = require('fs');
+    if (fs.existsSync(indexPath)) {
+      console.log('[LOAD] index.html exists, loading...');
+      mainWindow.loadFile(indexPath).then(() => {
+        console.log('[LOAD] loadFile completed successfully');
+      }).catch(err => {
+        console.error('[LOAD] loadFile error:', err);
+        dialog.showErrorBox('Load Error', `Failed to load app: ${err.message}\n\nPath: ${indexPath}`);
+      });
+    } else {
+      console.error('[LOAD] index.html NOT FOUND at:', indexPath);
+      // List what's actually in the app directory
+      const appPath = app.getAppPath();
+      console.log('[LOAD] App path:', appPath);
+      try {
+        const contents = fs.readdirSync(appPath);
+        console.log('[LOAD] App directory contents:', contents);
+        const rendererPath = path.join(appPath, 'renderer');
+        if (fs.existsSync(rendererPath)) {
+          const rendererContents = fs.readdirSync(rendererPath);
+          console.log('[LOAD] Renderer contents:', rendererContents);
+        }
+      } catch (e) {
+        console.error('[LOAD] Error listing directory:', e);
+      }
+      dialog.showErrorBox('App Not Found', `Could not find the application files.\n\nExpected: ${indexPath}`);
+    }
   } else if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
