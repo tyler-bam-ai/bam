@@ -80,6 +80,15 @@ function setupAutoUpdater() {
 
   autoUpdater.on('error', (err) => {
     console.error('[UPDATER] Error:', err);
+    // Don't show error dialog for common expected failures:
+    // - ENOENT: app-update.yml not found (running from copied location)
+    // - No published versions: first run or unpublished repo
+    if (err.message?.includes('ENOENT') ||
+      err.message?.includes('no such file') ||
+      err.message?.includes('No published versions')) {
+      console.log('[UPDATER] Suppressing expected error dialog');
+      return;
+    }
     dialog.showMessageBox(mainWindow, {
       type: 'error',
       title: 'Update Error',
