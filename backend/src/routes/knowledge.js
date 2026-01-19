@@ -568,4 +568,29 @@ router.get('/:clientId/stats', optionalAuth, async (req, res) => {
     }
 });
 
+/**
+ * Debug endpoint - list all knowledge items (for troubleshooting)
+ * GET /api/knowledge/debug/all
+ */
+router.get('/debug/all', optionalAuth, async (req, res) => {
+    try {
+        const items = await db.prepare(`
+            SELECT id, company_id, type, title, status, created_at, 
+                   SUBSTR(content, 1, 100) as content_preview
+            FROM knowledge_items 
+            ORDER BY created_at DESC
+            LIMIT 50
+        `).all();
+
+        res.json({
+            success: true,
+            count: items.length,
+            items: items
+        });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Debug error:', error);
+        res.status(500).json({ error: 'Failed to get debug info', details: error.message });
+    }
+});
+
 module.exports = router;

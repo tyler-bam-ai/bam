@@ -957,7 +957,7 @@ function VoiceRecorder({ isDemoMode }) {
                                                             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                                                         },
                                                         body: JSON.stringify({
-                                                            clientId: selectedClient?.id || localStorage.getItem('companyId') || 'demo',
+                                                            clientId: effectiveClientId,
                                                             type: 'voice_memo',
                                                             title: rec.name,
                                                             content: rec.transcription,
