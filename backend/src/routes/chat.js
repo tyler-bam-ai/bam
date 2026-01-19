@@ -470,7 +470,10 @@ router.post('/completions/stream', optionalAuth, async (req, res) => {
     try {
         const { messages, conversationId, brainType, clientId } = req.body;
         const userId = req.user?.id || 'anonymous';
-        const companyId = req.user?.companyId || clientId || 'default';
+        // For knowledge queries, prefer clientId (selected client) over user's own company
+        // This allows admins to query knowledge for the client they're viewing
+        const knowledgeCompanyId = clientId || req.user?.companyId || 'default';
+        console.log(`[STREAM] User companyId: ${req.user?.companyId}, clientId from request: ${clientId}, using: ${knowledgeCompanyId}`);
 
         if (!messages || !Array.isArray(messages)) {
             return res.status(400).json({ error: 'Messages array is required' });
@@ -486,12 +489,13 @@ router.post('/completions/stream', optionalAuth, async (req, res) => {
         // Get or create conversation in database
         let conversation = null;
         if (userId !== 'anonymous' && conversationId) {
-            conversation = getOrCreateConversation(conversationId, userId, companyId, brainType);
+            conversation = getOrCreateConversation(conversationId, userId, knowledgeCompanyId, brainType);
         }
 
-        // Query knowledge base
+        // Query knowledge base with the selected client's ID
         const userQuery = messages[messages.length - 1]?.content || '';
-        const knowledgeResult = await queryKnowledgeBase(null, userQuery, companyId);
+        const knowledgeResult = await queryKnowledgeBase(null, userQuery, knowledgeCompanyId);
+        console.log(`[STREAM] Knowledge query for company ${knowledgeCompanyId}: found=${knowledgeResult.found}, docs=${knowledgeResult.documents?.length || 0}`);
 
         // Build context message
         let contextMessage = '';
