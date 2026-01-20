@@ -481,11 +481,11 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
         const { clientId } = req.params;
 
         const items = await db.prepare(`
-            SELECT id, type, title, content, status, metadata, created_at
+            SELECT id, type, title, content, status, metadata, layer, upvotes, user_id, created_at
             FROM knowledge_items 
-            WHERE company_id = ?
+            WHERE company_id = ? OR client_id = ?
             ORDER BY created_at DESC
-        `).all(clientId);
+        `).all(clientId, clientId);
 
         const formattedItems = items.map(item => {
             const metadata = item.metadata ? JSON.parse(item.metadata) : {};
@@ -497,7 +497,11 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
                 wordCount: metadata.wordCount || item.content?.split(/\s+/).filter(w => w).length || 0,
                 source: metadata.source || 'unknown',
                 createdAt: item.created_at,
-                preview: item.content?.substring(0, 150) + (item.content?.length > 150 ? '...' : '')
+                preview: item.content?.substring(0, 150) + (item.content?.length > 150 ? '...' : ''),
+                // Knowledge Vault fields
+                layer: item.layer || 'personal',
+                upvotes: item.upvotes || 0,
+                userId: item.user_id
             };
         });
 

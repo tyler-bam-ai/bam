@@ -353,3 +353,144 @@
     width: 16px;
     height: 16px;
 }
+/* ==========================================
+   KNOWLEDGE VAULT LAYER TABS
+   ========================================== */
+
+.kb-layer-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 0 24px;
+    margin-bottom: 8px;
+    overflow-x: auto;
+}
+
+.kb-layer-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.kb-layer-tab:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+.kb-layer-tab.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.kb-layer-tab.vault.active {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    border-color: #d97706;
+}
+
+.tab-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.tab-badge.admin {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.kb-layer-tab:not(.active) .tab-badge.admin {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* Layer Description */
+.kb-layer-description {
+    padding: 8px 24px 16px;
+}
+
+.kb-layer-description p {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.kb-layer-description svg {
+    opacity: 0.7;
+}
+
+/* Library item actions (upvote, share) */
+.kb-item-layer-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.kb-item-layer-badge.vault {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    color: #92400e;
+}
+
+.kb-item-layer-badge.personal {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.kb-item-layer-badge.library {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.kb-item-upvote {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.kb-item-upvote:hover {
+    background: #dbeafe;
+    color: #1e40af;
+    border-color: #93c5fd;
+}
+
+.kb-item-upvote.upvoted {
+    background: #1e40af;
+    color: white;
+    border-color: #1e40af;
+}
+
+/* Badges container in item header */
+.kb-item-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}

@@ -22,7 +22,14 @@ import {
     Calendar,
     Loader2,
     RefreshCw,
-    AlertCircle
+    AlertCircle,
+    Lock,
+    User,
+    Users,
+    ThumbsUp,
+    Share2,
+    Shield,
+    ChevronUp
 } from 'lucide-react';
 import { useClientContext } from '../contexts/ClientContext';
 import { useAuth } from '../hooks/useAuth';
@@ -63,9 +70,15 @@ function KnowledgeBase() {
     const clientId = selectedClient?.id || user?.companyId || null;
     const clientName = selectedClient?.companyName || user?.companyName || 'Your Company';
 
+    // Check if user is admin (can see/edit vault)
+    const isAdmin = user?.role === 'bam_admin' || user?.role === 'client_admin';
+
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    // Current layer tab (vault, personal, library, all)
+    const [activeLayer, setActiveLayer] = useState('all');
 
     // Filters and sorting
     const [searchTerm, setSearchTerm] = useState('');
@@ -138,9 +151,33 @@ function KnowledgeBase() {
         }
     };
 
+    // Upvote library item
+    const handleUpvote = async (itemId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/knowledge/library/${itemId}/upvote`, {
+                method: 'POST',
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                // Update local state with new upvote count
+                setItems(prev => prev.map(item =>
+                    item.id === itemId ? { ...item, upvotes: data.upvotes } : item
+                ));
+            }
+        } catch (err) {
+            console.error('[KNOWLEDGE BASE] Upvote error:', err);
+        }
+    };
+
     // Filter and sort items
     const filteredItems = items
         .filter(item => {
+            // Layer filter
+            if (activeLayer !== 'all' && item.layer !== activeLayer) return false;
+
             // Type filter
             if (typeFilter !== 'all' && item.type !== typeFilter) return false;
 
@@ -208,9 +245,9 @@ function KnowledgeBase() {
             {/* Header */}
             <div className="kb-header">
                 <div className="kb-header-left">
-                    <Database size={28} />
+                    <Shield size={28} />
                     <div>
-                        <h1>Knowledge Base</h1>
+                        <h1>Knowledge Vault</h1>
                         <p className="kb-subtitle">{clientName} • {filteredItems.length} items</p>
                     </div>
                 </div>
@@ -218,6 +255,57 @@ function KnowledgeBase() {
                     <RefreshCw size={18} className={loading ? 'spin' : ''} />
                     Refresh
                 </button>
+            </div>
+
+            {/* Layer Tabs */}
+            <div className="kb-layer-tabs">
+                <button
+                    className={`kb-layer-tab ${activeLayer === 'all' ? 'active' : ''}`}
+                    onClick={() => setActiveLayer('all')}
+                >
+                    <Database size={16} />
+                    <span>All</span>
+                </button>
+                {isAdmin && (
+                    <button
+                        className={`kb-layer-tab vault ${activeLayer === 'vault' ? 'active' : ''}`}
+                        onClick={() => setActiveLayer('vault')}
+                    >
+                        <Lock size={16} />
+                        <span>Vault</span>
+                        <span className="tab-badge admin">Admin</span>
+                    </button>
+                )}
+                <button
+                    className={`kb-layer-tab ${activeLayer === 'personal' ? 'active' : ''}`}
+                    onClick={() => setActiveLayer('personal')}
+                >
+                    <User size={16} />
+                    <span>My Knowledge</span>
+                </button>
+                <button
+                    className={`kb-layer-tab ${activeLayer === 'library' ? 'active' : ''}`}
+                    onClick={() => setActiveLayer('library')}
+                >
+                    <Users size={16} />
+                    <span>Library</span>
+                </button>
+            </div>
+
+            {/* Layer Description */}
+            <div className="kb-layer-description">
+                {activeLayer === 'all' && (
+                    <p>All knowledge items from vault, personal, and shared library.</p>
+                )}
+                {activeLayer === 'vault' && (
+                    <p><Lock size={14} /> <strong>Vault:</strong> Protected company-wide knowledge. Only admins can add or edit.</p>
+                )}
+                {activeLayer === 'personal' && (
+                    <p><User size={14} /> <strong>My Knowledge:</strong> Your personal uploads that enhance your BAM Brain.</p>
+                )}
+                {activeLayer === 'library' && (
+                    <p><Users size={14} /> <strong>Library:</strong> Shared knowledge from team members. Upvote the best!</p>
+                )}
             </div>
 
             {/* Filters */}
@@ -292,14 +380,36 @@ function KnowledgeBase() {
                         return (
                             <div key={item.id} className="kb-item-card">
                                 <div className="kb-item-header">
-                                    <div
-                                        className="kb-item-type-badge"
-                                        style={{ backgroundColor: `${typeColor}20`, color: typeColor }}
-                                    >
-                                        <TypeIcon size={14} />
-                                        {TYPE_LABELS[item.type] || item.type}
+                                    <div className="kb-item-badges">
+                                        <div
+                                            className="kb-item-type-badge"
+                                            style={{ backgroundColor: `${typeColor}20`, color: typeColor }}
+                                        >
+                                            <TypeIcon size={14} />
+                                            {TYPE_LABELS[item.type] || item.type}
+                                        </div>
+                                        {/* Layer badge */}
+                                        {item.layer && (
+                                            <span className={`kb-item-layer-badge ${item.layer}`}>
+                                                {item.layer === 'vault' && <Lock size={10} />}
+                                                {item.layer === 'personal' && <User size={10} />}
+                                                {item.layer === 'library' && <Users size={10} />}
+                                                {item.layer}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="kb-item-actions">
+                                        {/* Upvote button for library items */}
+                                        {item.layer === 'library' && (
+                                            <button
+                                                className="kb-item-upvote"
+                                                onClick={() => handleUpvote(item.id)}
+                                                title="Upvote"
+                                            >
+                                                <ThumbsUp size={14} />
+                                                {item.upvotes || 0}
+                                            </button>
+                                        )}
                                         <button
                                             className="btn btn-ghost btn-icon btn-sm"
                                             onClick={() => setViewingItem(item)}
@@ -307,13 +417,16 @@ function KnowledgeBase() {
                                         >
                                             <Eye size={16} />
                                         </button>
-                                        <button
-                                            className="btn btn-ghost btn-icon btn-sm btn-danger"
-                                            onClick={() => setDeletingItem(item)}
-                                            title="Delete"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
+                                        {/* Only allow delete for admins on vault, or owner on personal */}
+                                        {(isAdmin || item.layer === 'personal') && (
+                                            <button
+                                                className="btn btn-ghost btn-icon btn-sm btn-danger"
+                                                onClick={() => setDeletingItem(item)}
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
