@@ -535,6 +535,79 @@ router.delete('/item/:itemId', optionalAuth, async (req, res) => {
 });
 
 /**
+ * Share a personal item to the library
+ * POST /api/knowledge/item/:itemId/share
+ */
+router.post('/item/:itemId/share', optionalAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const userId = req.user?.id;
+
+        // Get the original item
+        const item = await db.prepare('SELECT * FROM knowledge_items WHERE id = ?').get(itemId);
+        if (!item) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+
+        // Create a copy in the library layer
+        const newId = uuidv4();
+        const now = new Date().toISOString();
+
+        await db.run(`
+            INSERT INTO knowledge_items (id, client_id, title, type, content, created_at, user_id, layer, shared_by, upvotes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'library', ?, 0)
+        `, [newId, item.client_id, item.title, item.type, item.content, now, userId, userId]);
+
+        console.log(`[KNOWLEDGE] Shared item ${itemId} to library as ${newId}`);
+
+        res.json({ success: true, newItemId: newId });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Share error:', error);
+        res.status(500).json({ error: 'Failed to share item' });
+    }
+});
+
+/**
+ * Copy an item to personal knowledge or vault
+ * POST /api/knowledge/item/:itemId/copy
+ */
+router.post('/item/:itemId/copy', optionalAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const { targetLayer } = req.body; // 'personal' or 'vault'
+        const userId = req.user?.id;
+        const userRole = req.user?.role;
+
+        // Only admins can copy to vault
+        if (targetLayer === 'vault' && userRole !== 'bam_admin' && userRole !== 'client_admin') {
+            return res.status(403).json({ error: 'Only admins can add to vault' });
+        }
+
+        // Get the original item
+        const item = await db.prepare('SELECT * FROM knowledge_items WHERE id = ?').get(itemId);
+        if (!item) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+
+        // Create a copy in the target layer
+        const newId = uuidv4();
+        const now = new Date().toISOString();
+
+        await db.run(`
+            INSERT INTO knowledge_items (id, client_id, title, type, content, created_at, user_id, layer)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [newId, item.client_id, item.title, item.type, item.content, now, userId, targetLayer]);
+
+        console.log(`[KNOWLEDGE] Copied item ${itemId} to ${targetLayer} as ${newId}`);
+
+        res.json({ success: true, newItemId: newId });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Copy error:', error);
+        res.status(500).json({ error: 'Failed to copy item' });
+    }
+});
+
+/**
  * Get knowledge stats for a client
  * GET /api/knowledge/:clientId/stats
  */

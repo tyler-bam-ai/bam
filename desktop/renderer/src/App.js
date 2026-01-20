@@ -71,9 +71,20 @@ function App() {
                     </ProtectedRoute>
                 } />
 
-                <Route path="knowledge-base" element={
+                {/* My Knowledge - personal items (all users) */}
+                <Route path="my-knowledge" element={
+                    <KnowledgeBase layer="personal" />
+                } />
+
+                {/* Library - shared from team (all users) */}
+                <Route path="library" element={
+                    <KnowledgeBase layer="library" />
+                } />
+
+                {/* Vault - admin only protected knowledge */}
+                <Route path="vault" element={
                     <ProtectedRoute allowedRoles={['client_admin', 'bam_admin']}>
-                        <KnowledgeBase />
+                        <KnowledgeBase layer="vault" />
                     </ProtectedRoute>
                 } />
 

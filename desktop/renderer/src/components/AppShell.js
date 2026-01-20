@@ -41,7 +41,9 @@ const NAV_ITEMS = {
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/content', icon: Video, label: 'Content Engine' },
         { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
-        { path: '/knowledge-base', icon: Database, label: 'Knowledge Base', requiresClient: true },
+        { path: '/my-knowledge', icon: User, label: 'My Knowledge', requiresClient: true },
+        { path: '/library', icon: Users, label: 'Library', requiresClient: true },
+        { path: '/vault', icon: Lock, label: 'Vault', requiresClient: true },
         { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
         { path: '/admin', icon: Building2, label: 'Admin & Clients' },
         { path: '/onboarding', icon: ClipboardList, label: 'Onboarding' },
@@ -51,7 +53,9 @@ const NAV_ITEMS = {
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/content', icon: Video, label: 'Content Engine' },
         { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
-        { path: '/knowledge-base', icon: Database, label: 'Knowledge Vault', requiresClient: true },
+        { path: '/my-knowledge', icon: User, label: 'My Knowledge', requiresClient: true },
+        { path: '/library', icon: Users, label: 'Library', requiresClient: true },
+        { path: '/vault', icon: Lock, label: 'Vault', requiresClient: true },
         { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
         { path: '/team', icon: Users, label: 'Team' },
         { path: '/settings', icon: Settings, label: 'Settings' }
@@ -59,11 +63,15 @@ const NAV_ITEMS = {
     knowledge_provider: [
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
+        { path: '/my-knowledge', icon: User, label: 'My Knowledge', requiresClient: true },
+        { path: '/library', icon: Users, label: 'Library', requiresClient: true },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ],
     knowledge_consumer: [
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/consumer', icon: MessageSquare, label: 'Ask AI', requiresClient: true },
+        { path: '/my-knowledge', icon: User, label: 'My Knowledge', requiresClient: true },
+        { path: '/library', icon: Users, label: 'Library', requiresClient: true },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ]
 };

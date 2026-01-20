@@ -22,16 +22,12 @@ export const THEMES = {
 };
 
 export function ThemeProvider({ children }) {
-    // Get initial theme from localStorage or system preference
+    // Get initial theme from localStorage - default to dark
     const [theme, setTheme] = useState(() => {
         const saved = localStorage.getItem('bam_theme');
         if (saved && THEMES[saved]) return saved;
-
-        // Check system preference
-        if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-            return 'dark';
-        }
-        return 'light';
+        // Default to dark mode
+        return 'dark';
     });
 
     // Apply theme class to document

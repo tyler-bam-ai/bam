@@ -62,28 +62,58 @@ const TYPE_COLORS = {
     text: '#8b5cf6'
 };
 
-function KnowledgeBase() {
+function KnowledgeBase({ layer = 'personal' }) {
     const { selectedClient } = useClientContext();
     const { user } = useAuth();
 
     // Get effective clientId
     const clientId = selectedClient?.id || user?.companyId || null;
     const clientName = selectedClient?.companyName || user?.companyName || 'Your Company';
+    const userId = user?.id;
 
-    // Check if user is admin (can see/edit vault)
+    // Check if user is admin (can edit vault)
     const isAdmin = user?.role === 'bam_admin' || user?.role === 'client_admin';
+
+    // Layer-specific config
+    const LAYER_CONFIG = {
+        personal: {
+            title: 'My Knowledge',
+            subtitle: 'Your personal uploads that enhance your BAM Brain',
+            icon: User,
+            canDelete: true,
+            canShare: true,  // Can share to library
+            canSave: false   // Already yours
+        },
+        library: {
+            title: 'Library',
+            subtitle: 'Shared knowledge from your team. Upvote the best!',
+            icon: Users,
+            canDelete: false,  // Can't delete others' shared items
+            canShare: false,
+            canSave: true,     // Can save to personal
+            canPromote: isAdmin  // Admins can promote to vault
+        },
+        vault: {
+            title: 'Vault',
+            subtitle: 'Protected company-wide knowledge. ' + (isAdmin ? 'Admin access granted.' : 'View only.'),
+            icon: Lock,
+            canDelete: isAdmin,
+            canShare: false,
+            canSave: true      // Can copy to personal
+        }
+    };
+
+    const config = LAYER_CONFIG[layer] || LAYER_CONFIG.personal;
+    const LayerIcon = config.icon;
 
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // Current layer tab (vault, personal, library, all)
-    const [activeLayer, setActiveLayer] = useState('all');
-
     // Filters and sorting
     const [searchTerm, setSearchTerm] = useState('');
     const [typeFilter, setTypeFilter] = useState('all');
-    const [sortBy, setSortBy] = useState('created_at');
+    const [sortBy, setSortBy] = useState(layer === 'library' ? 'upvotes' : 'created_at');
     const [sortOrder, setSortOrder] = useState('desc');
 
     // Modal for viewing item content
@@ -172,11 +202,63 @@ function KnowledgeBase() {
         }
     };
 
+    // Share personal item to library
+    const handleShareToLibrary = async (itemId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/knowledge/item/${itemId}/share`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                }
+            });
+
+            if (response.ok) {
+                alert('Shared to Library successfully!');
+                fetchItems(); // Refresh to show new library item
+            } else {
+                const data = await response.json();
+                alert(data.error || 'Failed to share');
+            }
+        } catch (err) {
+            console.error('[KNOWLEDGE BASE] Share error:', err);
+            alert('Failed to share: ' + err.message);
+        }
+    };
+
+    // Save item to personal knowledge or vault
+    const handleSaveTo = async (itemId, targetLayer) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/knowledge/item/${itemId}/copy`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({ targetLayer })
+            });
+
+            if (response.ok) {
+                const layerName = targetLayer === 'vault' ? 'Vault' : 'My Knowledge';
+                alert(`Saved to ${layerName} successfully!`);
+                fetchItems(); // Refresh
+            } else {
+                const data = await response.json();
+                alert(data.error || 'Failed to save');
+            }
+        } catch (err) {
+            console.error('[KNOWLEDGE BASE] Save error:', err);
+            alert('Failed to save: ' + err.message);
+        }
+    };
+
     // Filter and sort items
     const filteredItems = items
         .filter(item => {
-            // Layer filter
-            if (activeLayer !== 'all' && item.layer !== activeLayer) return false;
+            // Filter by this page's layer
+            if (item.layer !== layer) return false;
 
             // Type filter
             if (typeFilter !== 'all' && item.type !== typeFilter) return false;
@@ -245,67 +327,19 @@ function KnowledgeBase() {
             {/* Header */}
             <div className="kb-header">
                 <div className="kb-header-left">
-                    <Shield size={28} />
+                    <LayerIcon size={28} />
                     <div>
-                        <h1>Knowledge Vault</h1>
-                        <p className="kb-subtitle">{clientName} • {filteredItems.length} items</p>
+                        <h1>{config.title}</h1>
+                        <p className="kb-subtitle">{config.subtitle}</p>
                     </div>
                 </div>
-                <button className="btn btn-secondary" onClick={fetchItems} disabled={loading}>
-                    <RefreshCw size={18} className={loading ? 'spin' : ''} />
-                    Refresh
-                </button>
-            </div>
-
-            {/* Layer Tabs */}
-            <div className="kb-layer-tabs">
-                <button
-                    className={`kb-layer-tab ${activeLayer === 'all' ? 'active' : ''}`}
-                    onClick={() => setActiveLayer('all')}
-                >
-                    <Database size={16} />
-                    <span>All</span>
-                </button>
-                {isAdmin && (
-                    <button
-                        className={`kb-layer-tab vault ${activeLayer === 'vault' ? 'active' : ''}`}
-                        onClick={() => setActiveLayer('vault')}
-                    >
-                        <Lock size={16} />
-                        <span>Vault</span>
-                        <span className="tab-badge admin">Admin</span>
+                <div className="kb-header-right">
+                    <span className="kb-item-count">{filteredItems.length} items</span>
+                    <button className="btn btn-secondary" onClick={fetchItems} disabled={loading}>
+                        <RefreshCw size={18} className={loading ? 'spin' : ''} />
+                        Refresh
                     </button>
-                )}
-                <button
-                    className={`kb-layer-tab ${activeLayer === 'personal' ? 'active' : ''}`}
-                    onClick={() => setActiveLayer('personal')}
-                >
-                    <User size={16} />
-                    <span>My Knowledge</span>
-                </button>
-                <button
-                    className={`kb-layer-tab ${activeLayer === 'library' ? 'active' : ''}`}
-                    onClick={() => setActiveLayer('library')}
-                >
-                    <Users size={16} />
-                    <span>Library</span>
-                </button>
-            </div>
-
-            {/* Layer Description */}
-            <div className="kb-layer-description">
-                {activeLayer === 'all' && (
-                    <p>All knowledge items from vault, personal, and shared library.</p>
-                )}
-                {activeLayer === 'vault' && (
-                    <p><Lock size={14} /> <strong>Vault:</strong> Protected company-wide knowledge. Only admins can add or edit.</p>
-                )}
-                {activeLayer === 'personal' && (
-                    <p><User size={14} /> <strong>My Knowledge:</strong> Your personal uploads that enhance your BAM Brain.</p>
-                )}
-                {activeLayer === 'library' && (
-                    <p><Users size={14} /> <strong>Library:</strong> Shared knowledge from team members. Upvote the best!</p>
-                )}
+                </div>
             </div>
 
             {/* Filters */}
@@ -400,7 +434,7 @@ function KnowledgeBase() {
                                     </div>
                                     <div className="kb-item-actions">
                                         {/* Upvote button for library items */}
-                                        {item.layer === 'library' && (
+                                        {layer === 'library' && (
                                             <button
                                                 className="kb-item-upvote"
                                                 onClick={() => handleUpvote(item.id)}
@@ -410,6 +444,40 @@ function KnowledgeBase() {
                                                 {item.upvotes || 0}
                                             </button>
                                         )}
+
+                                        {/* Share to Library (from personal) */}
+                                        {config.canShare && (
+                                            <button
+                                                className="btn btn-ghost btn-icon btn-sm"
+                                                onClick={() => handleShareToLibrary(item.id)}
+                                                title="Share to Library"
+                                            >
+                                                <Share2 size={16} />
+                                            </button>
+                                        )}
+
+                                        {/* Save to personal (from library/vault) */}
+                                        {config.canSave && (
+                                            <button
+                                                className="btn btn-ghost btn-icon btn-sm"
+                                                onClick={() => handleSaveTo(item.id, 'personal')}
+                                                title="Save to My Knowledge"
+                                            >
+                                                <User size={16} />
+                                            </button>
+                                        )}
+
+                                        {/* Promote to Vault (admin from library) */}
+                                        {config.canPromote && (
+                                            <button
+                                                className="btn btn-ghost btn-icon btn-sm"
+                                                onClick={() => handleSaveTo(item.id, 'vault')}
+                                                title="Add to Vault"
+                                            >
+                                                <Lock size={16} />
+                                            </button>
+                                        )}
+
                                         <button
                                             className="btn btn-ghost btn-icon btn-sm"
                                             onClick={() => setViewingItem(item)}
@@ -417,8 +485,9 @@ function KnowledgeBase() {
                                         >
                                             <Eye size={16} />
                                         </button>
-                                        {/* Only allow delete for admins on vault, or owner on personal */}
-                                        {(isAdmin || item.layer === 'personal') && (
+
+                                        {/* Delete based on config */}
+                                        {config.canDelete && (
                                             <button
                                                 className="btn btn-ghost btn-icon btn-sm btn-danger"
                                                 onClick={() => setDeletingItem(item)}
