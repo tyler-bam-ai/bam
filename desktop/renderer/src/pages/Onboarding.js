@@ -286,8 +286,8 @@ function Onboarding() {
         contactPhone: '',
         website: '',
         industry: '',
-        plan: 'professional',
-        seats: 5,
+        plan: '',  // Empty until selected
+        seats: null,  // Empty until specified
         // Interview responses (keyed by question id)
         responses: {},
         // Status
@@ -1323,7 +1323,15 @@ function Onboarding() {
         await new Promise(resolve => setTimeout(resolve, 300));
 
         // Get the final transcript from ref (most up-to-date)
-        const finalTranscript = fullTranscriptRef.current || fullTranscript || '';
+        let finalTranscript = fullTranscriptRef.current || fullTranscript || '';
+
+        // Append Plan and Seats info to transcript so it's in the knowledge base
+        if (sessionData.plan || sessionData.seats) {
+            const planName = sessionData.plan === 'starter' ? 'Starter' : sessionData.plan === 'professional' ? 'Professional' : sessionData.plan === 'enterprise' ? 'Enterprise' : 'Not specified';
+            const seatsInfo = sessionData.seats ? `${sessionData.seats} seats` : 'Not specified';
+            finalTranscript += `\n\n--- Subscription Details ---\nPlan: ${planName}\nNumber of Seats: ${seatsInfo}`;
+        }
+
         console.log('[SAVE] ========== SENDING TO BACKEND ==========');
         console.log('[SAVE] fullTranscriptRef.current:', fullTranscriptRef.current?.substring(0, 50) || 'EMPTY');
         console.log('[SAVE] fullTranscript state:', fullTranscript?.substring(0, 50) || 'EMPTY');
@@ -1337,10 +1345,10 @@ function Onboarding() {
             contactPhone: sessionData.contactPhone,
             website: sessionData.website,
             industry: sessionData.industry,
-            numberOfSeats: sessionData.numberOfSeats,
-            pricingPlan: sessionData.pricingPlan,
+            numberOfSeats: sessionData.seats,  // Fixed: was sessionData.numberOfSeats
+            pricingPlan: sessionData.plan,      // Fixed: was sessionData.pricingPlan
             responses: sessionData.responses,
-            transcript: finalTranscript // Include full interview transcript
+            transcript: finalTranscript // Include full interview transcript with Plan/Seats
         };
         console.log('[SAVE] Payload transcript length:', payload.transcript.length);
         console.log('[SAVE] API_URL:', API_URL);
@@ -1722,8 +1730,8 @@ function Onboarding() {
             contactPhone: '',
             website: '',
             industry: '',
-            plan: 'professional',
-            seats: 5,
+            plan: '',  // Empty until selected
+            seats: null,  // Empty until specified
             responses: {},
             status: 'draft',
             brainsCreated: false,
@@ -1977,6 +1985,7 @@ function Onboarding() {
                         value={sessionData.plan}
                         onChange={(e) => updateField('plan', e.target.value)}
                     >
+                        <option value="">— Select Plan —</option>
                         <option value="starter">Starter - $19.99/seat/mo</option>
                         <option value="professional">Professional - $29.99/seat/mo</option>
                         <option value="enterprise">Enterprise - $49.99/seat/mo</option>
@@ -1989,19 +1998,27 @@ function Onboarding() {
                         type="number"
                         min="1"
                         max="100"
-                        value={sessionData.seats}
-                        onChange={(e) => updateField('seats', parseInt(e.target.value))}
+                        value={sessionData.seats || ''}
+                        placeholder="—"
+                        onChange={(e) => updateField('seats', e.target.value ? parseInt(e.target.value) : null)}
                     />
                 </div>
             </div>
 
-            {/* Pricing note */}
-            <div className="pricing-note">
-                <Sparkles size={16} />
-                <span>
-                    Pricing is per seat per month. Total: ${(sessionData.seats * (sessionData.plan === 'starter' ? 19.99 : sessionData.plan === 'professional' ? 29.99 : 49.99)).toFixed(2)}/mo
-                </span>
-            </div>
+            {/* Pricing note - only show if plan and seats are selected */}
+            {sessionData.plan && sessionData.seats ? (
+                <div className="pricing-note">
+                    <Sparkles size={16} />
+                    <span>
+                        Pricing is per seat per month. Total: ${(sessionData.seats * (sessionData.plan === 'starter' ? 19.99 : sessionData.plan === 'professional' ? 29.99 : 49.99)).toFixed(2)}/mo
+                    </span>
+                </div>
+            ) : (
+                <div className="pricing-note" style={{ opacity: 0.6 }}>
+                    <Sparkles size={16} />
+                    <span>Select a plan and number of seats to see pricing</span>
+                </div>
+            )}
 
             {/* Industry-specific message */}
             {sessionData.industry && INDUSTRY_QUESTIONS[sessionData.industry] && (

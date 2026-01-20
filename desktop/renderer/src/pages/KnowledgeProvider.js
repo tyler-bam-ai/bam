@@ -21,7 +21,8 @@ import {
     Send,
     Clock,
     Archive,
-    Brain
+    Brain,
+    Type
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
 import { useClientContext } from '../contexts/ClientContext';
@@ -1012,6 +1013,142 @@ function APIKeySetup() {
     );
 }
 
+// Text Input component for manually entering knowledge
+function TextInput({ isDemoMode }) {
+    const { selectedClient } = useClientContext();
+    const { user } = useAuth();
+    const [title, setTitle] = useState('');
+    const [content, setContent] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [savedItems, setSavedItems] = useState([]);
+
+    // Use selected client or fall back to user's company
+    const effectiveClientId = selectedClient?.id || user?.companyId || 'default';
+
+    const handleSave = async () => {
+        if (!title.trim() || !content.trim()) {
+            alert('Please enter both a title and content.');
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/knowledge/text`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({
+                    clientId: effectiveClientId,
+                    type: 'text_note',
+                    title: title.trim(),
+                    content: content.trim(),
+                    wordCount: content.trim().split(/\s+/).filter(w => w).length
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setSavedItems(prev => [{
+                    id: data.id || Date.now().toString(),
+                    title: title.trim(),
+                    preview: content.trim().substring(0, 100),
+                    wordCount: content.trim().split(/\s+/).filter(w => w).length,
+                    date: new Date().toISOString()
+                }, ...prev]);
+                setTitle('');
+                setContent('');
+                alert('Text saved to knowledge base!');
+            } else {
+                const errorData = await response.json();
+                alert('Failed to save: ' + (errorData.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Save error:', error);
+            alert('Error saving: ' + error.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <div className="text-input-section">
+            <div className="section-header">
+                <h3>Add Text Knowledge</h3>
+                <p>Type or paste text to add it directly to the knowledge base</p>
+            </div>
+
+            <div className="text-form">
+                <div className="form-group">
+                    <label>Title</label>
+                    <input
+                        type="text"
+                        placeholder="e.g., Return Policy, FAQs, etc."
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        disabled={isSaving}
+                    />
+                </div>
+
+                <div className="form-group">
+                    <label>Content</label>
+                    <textarea
+                        placeholder="Paste or type the knowledge content here..."
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                        disabled={isSaving}
+                        rows={10}
+                    />
+                    {content && (
+                        <span className="word-count">
+                            {content.trim().split(/\s+/).filter(w => w).length} words
+                        </span>
+                    )}
+                </div>
+
+                <button
+                    className="btn btn-primary"
+                    onClick={handleSave}
+                    disabled={isSaving || !title.trim() || !content.trim()}
+                >
+                    {isSaving ? (
+                        <>
+                            <Loader2 size={18} className="spin" />
+                            Saving...
+                        </>
+                    ) : (
+                        <>
+                            <Check size={18} />
+                            Save to Knowledge Base
+                        </>
+                    )}
+                </button>
+            </div>
+
+            {/* Recently saved items */}
+            {savedItems.length > 0 && (
+                <div className="saved-items-section">
+                    <h4>Recently Added</h4>
+                    <div className="saved-items-list">
+                        {savedItems.map(item => (
+                            <div key={item.id} className="saved-item-card">
+                                <FileText size={16} />
+                                <div className="saved-item-info">
+                                    <span className="saved-item-title">{item.title}</span>
+                                    <span className="saved-item-meta">{item.wordCount} words</span>
+                                </div>
+                                <CheckCircle size={16} className="saved-check" />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // Demo unanswered questions for Knowledge Gaps
 const DEMO_KNOWLEDGE_GAPS = [
     {
@@ -1355,6 +1492,10 @@ function KnowledgeProvider() {
                     <Mic size={18} />
                     Voice Memos
                 </NavLink>
+                <NavLink to="/provider/text" className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}>
+                    <Type size={18} />
+                    Text Input
+                </NavLink>
                 <NavLink to="/provider/api" className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}>
                     <Key size={18} />
                     API Setup
@@ -1372,6 +1513,7 @@ function KnowledgeProvider() {
                     <Route index element={<ScreenRecorder isDemoMode={isDemoMode} />} />
                     <Route path="upload" element={<DocumentUploader isDemoMode={isDemoMode} />} />
                     <Route path="voice" element={<VoiceRecorder isDemoMode={isDemoMode} />} />
+                    <Route path="text" element={<TextInput isDemoMode={isDemoMode} />} />
                     <Route path="api" element={<APIKeySetup isDemoMode={isDemoMode} />} />
                     <Route path="gaps" element={<KnowledgeGaps isDemoMode={isDemoMode} />} />
                 </Routes>
