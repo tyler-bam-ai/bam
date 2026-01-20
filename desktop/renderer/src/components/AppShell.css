@@ -599,3 +599,24 @@
     object-fit: cover;
     border: 2px solid var(--border-color);
 }
+
+/* Client logo placeholder (first letter of company name) */
+.client-logo-placeholder {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark, #4f46e5));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: white;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.client-logo {
+    border-radius: 8px;
+    object-fit: cover;
+}

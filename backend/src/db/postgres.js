@@ -101,15 +101,22 @@ async function initializeSchema() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
-            -- Knowledge items table
+            -- Knowledge items table with Vault/Personal/Library support
             CREATE TABLE IF NOT EXISTS knowledge_items (
                 id TEXT PRIMARY KEY,
                 client_id TEXT,
+                company_id TEXT,
+                user_id TEXT,
                 type TEXT NOT NULL,
                 title TEXT,
                 content TEXT,
                 metadata TEXT,
                 embedding TEXT,
+                layer TEXT DEFAULT 'personal',
+                is_hidden BOOLEAN DEFAULT FALSE,
+                upvotes INTEGER DEFAULT 0,
+                shared_by TEXT,
+                status TEXT DEFAULT 'ready',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -122,6 +129,7 @@ async function initializeSchema() {
                 contact_phone TEXT,
                 industry TEXT,
                 website TEXT,
+                logo_url TEXT,
                 plan TEXT DEFAULT 'starter',
                 seats INTEGER DEFAULT 5,
                 status TEXT DEFAULT 'active',
@@ -129,6 +137,19 @@ async function initializeSchema() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Add columns if they don't exist (for existing databases)
+            DO $$ BEGIN
+                ALTER TABLE knowledge_items ADD COLUMN IF NOT EXISTS layer TEXT DEFAULT 'personal';
+                ALTER TABLE knowledge_items ADD COLUMN IF NOT EXISTS user_id TEXT;
+                ALTER TABLE knowledge_items ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE;
+                ALTER TABLE knowledge_items ADD COLUMN IF NOT EXISTS upvotes INTEGER DEFAULT 0;
+                ALTER TABLE knowledge_items ADD COLUMN IF NOT EXISTS shared_by TEXT;
+                ALTER TABLE knowledge_items ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ready';
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo_url TEXT;
+                ALTER TABLE clients ADD COLUMN IF NOT EXISTS logo_url TEXT;
+            EXCEPTION WHEN OTHERS THEN NULL;
+            END $$;
         `);
         console.log('[PG] Schema initialized');
     } finally {

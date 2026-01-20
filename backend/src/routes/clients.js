@@ -136,11 +136,56 @@ router.post('/from-onboarding', async (req, res) => {
 
         console.log(`[ONBOARDING] Created company: ${companyName} (${companyId})`);
 
-        // Create user account with email as password for easy testing
+        // Create user accounts from userEmails array (multi-seat support)
         let userId = null;
         let temporaryPassword = null;
+        const createdUsers = [];
 
-        if (contactEmail) {
+        // Get userEmails from request body
+        const userEmails = req.body.userEmails || [];
+
+        if (userEmails.length > 0) {
+            // Create accounts for all users in the userEmails array
+            for (const userEmailData of userEmails) {
+                if (!userEmailData.email || !userEmailData.email.trim()) continue;
+
+                const email = userEmailData.email.toLowerCase().trim();
+                const isAdmin = userEmailData.isAdmin || false;
+
+                // Check if user already exists
+                const existingUser = await db.get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
+                if (existingUser) {
+                    console.log(`[ONBOARDING] User already exists: ${email}, skipping`);
+                    continue;
+                }
+
+                const tempPassword = email; // Email is the password for testing
+                const passwordHash = await bcrypt.hash(tempPassword, 10);
+                const newUserId = uuidv4();
+                const role = isAdmin ? 'client_admin' : 'knowledge_consumer';
+
+                await db.run(`
+                    INSERT INTO users (id, email, password_hash, name, role, company_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `, [newUserId, email, passwordHash, email.split('@')[0], role, companyId, now]);
+
+                console.log(`[ONBOARDING] Created user: ${email} (${newUserId}) as ${role}`);
+
+                createdUsers.push({
+                    userId: newUserId,
+                    email: email,
+                    role: role,
+                    temporaryPassword: tempPassword
+                });
+
+                // Track first user for response
+                if (!userId) {
+                    userId = newUserId;
+                    temporaryPassword = tempPassword;
+                }
+            }
+        } else if (contactEmail) {
+            // Fallback: create single user from contactEmail if no userEmails provided
             temporaryPassword = contactEmail; // Email is the password for testing
             const passwordHash = await bcrypt.hash(temporaryPassword, 10);
             userId = uuidv4();
@@ -151,6 +196,13 @@ router.post('/from-onboarding', async (req, res) => {
             `, [userId, contactEmail.toLowerCase(), passwordHash, contactName || contactEmail.split('@')[0], companyId, now]);
 
             console.log(`[ONBOARDING] Created user: ${contactEmail} (${userId})`);
+
+            createdUsers.push({
+                userId: userId,
+                email: contactEmail.toLowerCase(),
+                role: 'client_admin',
+                temporaryPassword: temporaryPassword
+            });
         }
 
         // Save individual responses to onboarding_responses table for easier querying
@@ -235,11 +287,12 @@ router.post('/from-onboarding', async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: `Client "${companyName}" created successfully`,
+            message: `Client "${companyName}" created successfully with ${createdUsers.length} user account(s)`,
             client: formatClient(client),
             clientId: companyId,
             userId,
-            temporaryPassword, // Return so UI can show credentials popup
+            temporaryPassword, // Return so UI can show credentials popup (first user)
+            createdUsers, // All created user accounts
             hasTranscript: !!transcript
         });
     } catch (error) {

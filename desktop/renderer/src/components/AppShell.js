@@ -169,8 +169,9 @@ function AppShell() {
                 </div>
             )}
 
-            {/* Selected Client Context Banner - Only on Content Engine, Brain Training, Knowledge Base, BAM Brains, Settings */}
-            {isClientSelected && (
+            {/* Selected Client Context Banner - Only for BAM admins viewing a client */}
+            {/* Regular client users don't see this - they're always viewing their own company */}
+            {user?.role === 'bam_admin' && isClientSelected && (
                 ['/content', '/provider', '/knowledge-base', '/consumer', '/settings'].some(p => location.pathname.startsWith(p))
             ) && (
                     <div className="client-context-banner">
@@ -196,12 +197,34 @@ function AppShell() {
             <aside className={`sidebar ${mobileSidebarOpen ? 'open' : ''}`}>
                 <div className="sidebar-header">
                     <div className="logo">
-                        <img
-                            src={bamLogoGradient}
-                            alt="BAM.ai"
-                            className="logo-icon"
-                        />
-                        {!sidebarCollapsed && <span className="logo-text">BAM.ai</span>}
+                        {/* Show client logo/name for non-BAM users (Slack-style branding) */}
+                        {user?.role !== 'bam_admin' && (selectedClient?.logoUrl || selectedClient?.companyName) ? (
+                            <>
+                                {selectedClient?.logoUrl ? (
+                                    <img
+                                        src={selectedClient.logoUrl}
+                                        alt={selectedClient.companyName}
+                                        className="logo-icon client-logo"
+                                    />
+                                ) : (
+                                    <div className="logo-icon client-logo-placeholder">
+                                        {selectedClient?.companyName?.charAt(0) || 'C'}
+                                    </div>
+                                )}
+                                {!sidebarCollapsed && (
+                                    <span className="logo-text">{selectedClient?.companyName || 'My Company'}</span>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                <img
+                                    src={bamLogoGradient}
+                                    alt="BAM.ai"
+                                    className="logo-icon"
+                                />
+                                {!sidebarCollapsed && <span className="logo-text">BAM.ai</span>}
+                            </>
+                        )}
                     </div>
                     <button className="btn btn-ghost btn-icon btn-sm collapse-btn" onClick={toggleSidebar}>
                         {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}

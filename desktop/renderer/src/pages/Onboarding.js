@@ -288,6 +288,8 @@ function Onboarding() {
         industry: '',
         plan: '',  // Empty until selected
         seats: null,  // Empty until specified
+        // Multi-seat user emails (array of {email, isAdmin})
+        userEmails: [],
         // Interview responses (keyed by question id)
         responses: {},
         // Status
@@ -1348,7 +1350,8 @@ function Onboarding() {
             numberOfSeats: sessionData.seats,  // Fixed: was sessionData.numberOfSeats
             pricingPlan: sessionData.plan,      // Fixed: was sessionData.pricingPlan
             responses: sessionData.responses,
-            transcript: finalTranscript // Include full interview transcript with Plan/Seats
+            transcript: finalTranscript, // Include full interview transcript with Plan/Seats
+            userEmails: sessionData.userEmails || [] // Multi-seat user accounts
         };
         console.log('[SAVE] Payload transcript length:', payload.transcript.length);
         console.log('[SAVE] API_URL:', API_URL);
@@ -2000,10 +2003,109 @@ function Onboarding() {
                         max="100"
                         value={sessionData.seats || ''}
                         placeholder="—"
-                        onChange={(e) => updateField('seats', e.target.value ? parseInt(e.target.value) : null)}
+                        onChange={(e) => {
+                            const newSeats = e.target.value ? parseInt(e.target.value) : null;
+                            updateField('seats', newSeats);
+                            // Initialize userEmails array based on seat count
+                            if (newSeats && newSeats > 0) {
+                                const currentEmails = sessionData.userEmails || [];
+                                const newEmails = [];
+                                for (let i = 0; i < newSeats; i++) {
+                                    newEmails.push({
+                                        email: currentEmails[i]?.email || (i === 0 ? sessionData.contactEmail : ''),
+                                        isAdmin: i === 0 ? true : (currentEmails[i]?.isAdmin || false)
+                                    });
+                                }
+                                updateField('userEmails', newEmails);
+                            }
+                        }}
                     />
                 </div>
             </div>
+
+            {/* Multi-seat User Emails */}
+            {sessionData.seats && sessionData.seats > 0 && (
+                <div className="multi-seat-section">
+                    <h4 style={{ margin: '16px 0 8px', color: 'var(--text-primary)' }}>
+                        User Accounts ({sessionData.seats} seat{sessionData.seats > 1 ? 's' : ''})
+                    </h4>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                        Enter email addresses for each user seat. First user is required admin.
+                    </p>
+                    <div className="user-emails-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {Array.from({ length: sessionData.seats }).map((_, index) => {
+                            const userEmail = sessionData.userEmails?.[index] || { email: '', isAdmin: index === 0 };
+                            return (
+                                <div
+                                    key={index}
+                                    className="user-email-row"
+                                    style={{
+                                        display: 'flex',
+                                        gap: '8px',
+                                        alignItems: 'center',
+                                        padding: '8px 12px',
+                                        background: index === 0 ? 'rgba(var(--primary-rgb), 0.1)' : 'var(--bg-secondary)',
+                                        borderRadius: '8px',
+                                        border: index === 0 ? '1px solid var(--primary)' : '1px solid var(--border-color)'
+                                    }}
+                                >
+                                    <span style={{
+                                        width: '24px',
+                                        textAlign: 'center',
+                                        fontWeight: 500,
+                                        color: 'var(--text-secondary)'
+                                    }}>
+                                        {index + 1}
+                                    </span>
+                                    <input
+                                        type="email"
+                                        placeholder={index === 0 ? "Admin email (required)" : `User ${index + 1} email`}
+                                        value={userEmail.email}
+                                        style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+                                        onChange={(e) => {
+                                            const newEmails = [...(sessionData.userEmails || [])];
+                                            newEmails[index] = { ...newEmails[index], email: e.target.value };
+                                            updateField('userEmails', newEmails);
+                                        }}
+                                    />
+                                    {index === 0 ? (
+                                        <span style={{
+                                            padding: '4px 8px',
+                                            background: 'var(--primary)',
+                                            color: 'white',
+                                            borderRadius: '4px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 600
+                                        }}>
+                                            ADMIN
+                                        </span>
+                                    ) : (
+                                        <label style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            fontSize: '0.8rem',
+                                            color: 'var(--text-secondary)',
+                                            cursor: 'pointer'
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={userEmail.isAdmin || false}
+                                                onChange={(e) => {
+                                                    const newEmails = [...(sessionData.userEmails || [])];
+                                                    newEmails[index] = { ...newEmails[index], isAdmin: e.target.checked };
+                                                    updateField('userEmails', newEmails);
+                                                }}
+                                            />
+                                            Admin
+                                        </label>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Pricing note - only show if plan and seats are selected */}
             {sessionData.plan && sessionData.seats ? (

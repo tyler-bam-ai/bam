@@ -595,4 +595,274 @@ router.get('/debug/all', optionalAuth, async (req, res) => {
     }
 });
 
+// ==========================================
+// KNOWLEDGE VAULT SYSTEM ROUTES
+// ==========================================
+
+/**
+ * Get Vault items (company-wide, admin-created)
+ * GET /api/knowledge/vault/:clientId
+ */
+router.get('/vault/:clientId', optionalAuth, async (req, res) => {
+    try {
+        const { clientId } = req.params;
+        const showHidden = req.query.showHidden === 'true';
+
+        let query = `
+            SELECT id, type, title, content, metadata, layer, is_hidden, upvotes, created_at
+            FROM knowledge_items 
+            WHERE (company_id = ? OR client_id = ?) AND layer = 'vault'
+        `;
+
+        if (!showHidden) {
+            query += ` AND (is_hidden = FALSE OR is_hidden IS NULL)`;
+        }
+
+        query += ` ORDER BY created_at DESC`;
+
+        const items = await db.prepare(query).all(clientId, clientId);
+
+        res.json({ success: true, items, layer: 'vault' });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Vault fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch vault items' });
+    }
+});
+
+/**
+ * Add item to Vault (admin only)
+ * POST /api/knowledge/vault
+ */
+router.post('/vault', optionalAuth, async (req, res) => {
+    try {
+        const { clientId, title, content, type = 'text_note', isHidden = false } = req.body;
+
+        if (!clientId || !content) {
+            return res.status(400).json({ error: 'clientId and content are required' });
+        }
+
+        const itemId = uuidv4();
+        const wordCount = content.split(/\s+/).filter(w => w).length;
+        const metadata = JSON.stringify({
+            type: type,
+            wordCount,
+            source: 'vault_direct',
+            createdAt: new Date().toISOString()
+        });
+
+        await db.run(`
+            INSERT INTO knowledge_items (id, company_id, client_id, type, title, content, metadata, layer, is_hidden, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'vault', ?, 'ready')
+        `, itemId, clientId, clientId, type, title || 'Vault Item', content, metadata, isHidden);
+
+        res.json({
+            success: true,
+            id: itemId,
+            message: 'Added to vault'
+        });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Vault add error:', error);
+        res.status(500).json({ error: 'Failed to add to vault' });
+    }
+});
+
+/**
+ * Toggle vault item visibility
+ * PUT /api/knowledge/vault/:itemId/visibility
+ */
+router.put('/vault/:itemId/visibility', optionalAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const { isHidden } = req.body;
+
+        await db.run(`
+            UPDATE knowledge_items SET is_hidden = ? WHERE id = ? AND layer = 'vault'
+        `, isHidden, itemId);
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Visibility toggle error:', error);
+        res.status(500).json({ error: 'Failed to toggle visibility' });
+    }
+});
+
+/**
+ * Get Library items (shared by employees, visible to all)
+ * GET /api/knowledge/library/:clientId
+ */
+router.get('/library/:clientId', optionalAuth, async (req, res) => {
+    try {
+        const { clientId } = req.params;
+
+        const items = await db.prepare(`
+            SELECT id, type, title, content, metadata, upvotes, shared_by, user_id, created_at
+            FROM knowledge_items 
+            WHERE (company_id = ? OR client_id = ?) AND layer = 'library'
+            ORDER BY upvotes DESC, created_at DESC
+        `).all(clientId, clientId);
+
+        res.json({ success: true, items, layer: 'library' });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Library fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch library items' });
+    }
+});
+
+/**
+ * Share item to Library
+ * POST /api/knowledge/library/share
+ */
+router.post('/library/share', optionalAuth, async (req, res) => {
+    try {
+        const { itemId, userId, comment } = req.body;
+
+        // Update existing item to library layer
+        await db.run(`
+            UPDATE knowledge_items 
+            SET layer = 'library', shared_by = ?, metadata = metadata || ?
+            WHERE id = ?
+        `, userId, JSON.stringify({ sharedComment: comment }), itemId);
+
+        res.json({ success: true, message: 'Shared to library' });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Share error:', error);
+        res.status(500).json({ error: 'Failed to share to library' });
+    }
+});
+
+/**
+ * Upvote a library item
+ * POST /api/knowledge/library/:itemId/upvote
+ */
+router.post('/library/:itemId/upvote', optionalAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+
+        await db.run(`
+            UPDATE knowledge_items 
+            SET upvotes = COALESCE(upvotes, 0) + 1 
+            WHERE id = ? AND layer = 'library'
+        `, itemId);
+
+        const item = await db.prepare(`
+            SELECT upvotes FROM knowledge_items WHERE id = ?
+        `).get(itemId);
+
+        res.json({ success: true, upvotes: item?.upvotes || 0 });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Upvote error:', error);
+        res.status(500).json({ error: 'Failed to upvote' });
+    }
+});
+
+/**
+ * Promote library item to vault (admin action)
+ * POST /api/knowledge/library/:itemId/promote
+ */
+router.post('/library/:itemId/promote', optionalAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+
+        await db.run(`
+            UPDATE knowledge_items 
+            SET layer = 'vault'
+            WHERE id = ? AND layer = 'library'
+        `, itemId);
+
+        res.json({ success: true, message: 'Promoted to vault' });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Promote error:', error);
+        res.status(500).json({ error: 'Failed to promote to vault' });
+    }
+});
+
+/**
+ * Get personal knowledge (user's own uploads)
+ * GET /api/knowledge/personal/:clientId/:userId
+ */
+router.get('/personal/:clientId/:userId', optionalAuth, async (req, res) => {
+    try {
+        const { clientId, userId } = req.params;
+
+        const items = await db.prepare(`
+            SELECT id, type, title, content, metadata, layer, created_at
+            FROM knowledge_items 
+            WHERE (company_id = ? OR client_id = ?) 
+              AND user_id = ? 
+              AND layer = 'personal'
+            ORDER BY created_at DESC
+        `).all(clientId, clientId, userId);
+
+        res.json({ success: true, items, layer: 'personal' });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Personal fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch personal items' });
+    }
+});
+
+/**
+ * Get all knowledge for AI context (respects layer priority)
+ * Vault items trump personal items
+ * GET /api/knowledge/ai-context/:clientId
+ */
+router.get('/ai-context/:clientId', optionalAuth, async (req, res) => {
+    try {
+        const { clientId } = req.params;
+        const userId = req.query.userId;
+
+        // Get vault items (highest priority, visible unless hidden)
+        const vaultItems = await db.prepare(`
+            SELECT id, type, title, content, 'vault' as layer
+            FROM knowledge_items 
+            WHERE (company_id = ? OR client_id = ?) 
+              AND layer = 'vault' 
+              AND (is_hidden = FALSE OR is_hidden IS NULL)
+              AND status = 'ready'
+            ORDER BY created_at DESC
+        `).all(clientId, clientId);
+
+        // Get personal items for this user (if userId provided)
+        let personalItems = [];
+        if (userId) {
+            personalItems = await db.prepare(`
+                SELECT id, type, title, content, 'personal' as layer
+                FROM knowledge_items 
+                WHERE (company_id = ? OR client_id = ?) 
+                  AND user_id = ? 
+                  AND layer = 'personal'
+                  AND status = 'ready'
+                ORDER BY created_at DESC
+            `).all(clientId, clientId, userId);
+        }
+
+        // Get library items (supplemental)
+        const libraryItems = await db.prepare(`
+            SELECT id, type, title, content, 'library' as layer
+            FROM knowledge_items 
+            WHERE (company_id = ? OR client_id = ?) 
+              AND layer = 'library'
+              AND status = 'ready'
+            ORDER BY upvotes DESC, created_at DESC
+            LIMIT 20
+        `).all(clientId, clientId);
+
+        // Combine with priority: vault first, then personal, then library
+        const allItems = [...vaultItems, ...personalItems, ...libraryItems];
+
+        res.json({
+            success: true,
+            items: allItems,
+            counts: {
+                vault: vaultItems.length,
+                personal: personalItems.length,
+                library: libraryItems.length,
+                total: allItems.length
+            }
+        });
+    } catch (error) {
+        console.error('[KNOWLEDGE] AI context error:', error);
+        res.status(500).json({ error: 'Failed to get AI context' });
+    }
+});
+
 module.exports = router;
