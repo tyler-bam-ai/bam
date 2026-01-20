@@ -130,10 +130,16 @@ router.post('/from-onboarding', async (req, res) => {
 
         const now = new Date().toISOString();
 
+        // Store logo in settings JSON to avoid column dependency issues
+        const settingsWithLogo = {
+            ...JSON.parse(settings),
+            logoUrl: logoUrl || null
+        };
+
         await db.run(`
-            INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, logo_url, settings, created_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
-        `, [companyId, companyName, industry || null, pricingPlan || 'starter', contactName || null, contactEmail || null, logoUrl || null, settings, now]);
+            INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+        `, [companyId, companyName, industry || null, pricingPlan || 'starter', contactName || null, contactEmail || null, JSON.stringify(settingsWithLogo), now]);
 
         console.log(`[ONBOARDING] Created company: ${companyName} (${companyId})`);
 
