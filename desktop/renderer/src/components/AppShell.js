@@ -3,6 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useDemoMode } from '../contexts/DemoModeContext';
 import { useClientContext } from '../contexts/ClientContext';
+import { useTheme } from '../contexts/ThemeContext';
 import Showcase from './Showcase';
 import Onboarding from '../pages/Onboarding';
 import {
@@ -25,7 +26,9 @@ import {
     ClipboardList,
     X,
     Lock,
-    Database
+    Database,
+    Sun,
+    Moon
 } from 'lucide-react';
 import './AppShell.css';
 
@@ -48,8 +51,9 @@ const NAV_ITEMS = {
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/content', icon: Video, label: 'Content Engine' },
         { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
-        { path: '/knowledge-base', icon: Database, label: 'Knowledge Base', requiresClient: true },
+        { path: '/knowledge-base', icon: Database, label: 'Knowledge Vault', requiresClient: true },
         { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
+        { path: '/team', icon: Users, label: 'Team' },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ],
     knowledge_provider: [
@@ -69,6 +73,7 @@ function AppShell() {
     const { user, logout } = useAuth();
     const { isDemoMode, toggleDemoMode } = useDemoMode();
     const { selectedClient, clearClient, isClientSelected } = useClientContext();
+    const { theme, toggleTheme, isDarkMode } = useTheme();
     const navigate = useNavigate();
     const location = useLocation();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -304,6 +309,13 @@ function AppShell() {
                                 <span className="admin-mode-label">Admin</span>
                             </label>
                         )}
+                        <button
+                            className="btn btn-ghost btn-icon theme-toggle-btn"
+                            onClick={toggleTheme}
+                            title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                        >
+                            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                        </button>
                         <button
                             className="btn btn-ghost btn-icon logout-btn"
                             onClick={handleLogout}

@@ -285,6 +285,7 @@ function Onboarding() {
         contactEmail: '',
         contactPhone: '',
         website: '',
+        logoUrl: '',  // Company logo URL
         industry: '',
         plan: '',  // Empty until selected
         seats: null,  // Empty until specified
@@ -1346,6 +1347,7 @@ function Onboarding() {
             contactEmail: sessionData.contactEmail,
             contactPhone: sessionData.contactPhone,
             website: sessionData.website,
+            logoUrl: sessionData.logoUrl,  // Company logo
             industry: sessionData.industry,
             numberOfSeats: sessionData.seats,  // Fixed: was sessionData.numberOfSeats
             pricingPlan: sessionData.plan,      // Fixed: was sessionData.pricingPlan
@@ -1940,6 +1942,84 @@ function Onboarding() {
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                     </select>
+                </div>
+
+                {/* Company Logo Upload */}
+                <div className="form-group logo-upload-group">
+                    <label>Company Logo</label>
+                    <div className="logo-upload-container" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        {sessionData.logoUrl ? (
+                            <div className="logo-preview" style={{
+                                width: '64px',
+                                height: '64px',
+                                borderRadius: '8px',
+                                overflow: 'hidden',
+                                border: '2px solid var(--primary)',
+                                background: 'white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <img
+                                    src={sessionData.logoUrl}
+                                    alt="Company logo"
+                                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                                />
+                            </div>
+                        ) : (
+                            <div className="logo-placeholder" style={{
+                                width: '64px',
+                                height: '64px',
+                                borderRadius: '8px',
+                                border: '2px dashed var(--border-color)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'var(--text-secondary)',
+                                fontSize: '1.5rem',
+                                fontWeight: 600
+                            }}>
+                                {sessionData.companyName?.charAt(0) || '?'}
+                            </div>
+                        )}
+                        <div style={{ flex: 1 }}>
+                            <input
+                                type="url"
+                                value={sessionData.logoUrl}
+                                onChange={(e) => updateField('logoUrl', e.target.value)}
+                                placeholder="https://example.com/logo.png"
+                                style={{ marginBottom: '8px' }}
+                            />
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
+                                    📁 Upload File
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        style={{ display: 'none' }}
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (event) => {
+                                                    updateField('logoUrl', event.target.result);
+                                                };
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }}
+                                    />
+                                </label>
+                                {sessionData.logoUrl && (
+                                    <button
+                                        className="btn btn-ghost btn-sm"
+                                        onClick={() => updateField('logoUrl', '')}
+                                    >
+                                        ✕ Remove
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="form-group">

@@ -1,0 +1,253 @@
+/* Team Management Styles */
+
+.team-management {
+    padding: 24px;
+    max-width: 900px;
+}
+
+.tm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+}
+
+.tm-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.tm-header-left h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.tm-header-left p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* Alerts */
+.tm-alert {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+}
+
+.tm-alert.success {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+}
+
+.tm-alert.error {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.tm-alert button {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+.tm-alert button:hover {
+    opacity: 1;
+}
+
+/* Invite Section */
+.tm-invite-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.tm-invite-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 16px 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.tm-invite-form .tm-form-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.tm-invite-form input,
+.tm-invite-form select {
+    padding: 10px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: var(--bg-primary);
+}
+
+.tm-invite-form input[type="email"] {
+    flex: 2;
+    min-width: 200px;
+}
+
+.tm-invite-form input[type="text"] {
+    flex: 1;
+    min-width: 150px;
+}
+
+.tm-invite-form select {
+    min-width: 120px;
+}
+
+.tm-invite-form button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+/* Users List */
+.tm-users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tm-loading,
+.tm-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px;
+    color: var(--text-secondary);
+    gap: 12px;
+}
+
+.tm-user-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    transition: all 0.2s ease;
+}
+
+.tm-user-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.tm-user-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark, #4f46e5));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: white;
+    flex-shrink: 0;
+}
+
+.tm-user-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.tm-user-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.first-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: white;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.tm-user-email {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.tm-user-role select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    background: var(--bg-primary);
+}
+
+.tm-user-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.role-badge.admin {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    color: #92400e;
+}
+
+.role-badge.user {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .tm-invite-form .tm-form-row {
+        flex-direction: column;
+    }
+
+    .tm-invite-form input,
+    .tm-invite-form select {
+        width: 100%;
+    }
+
+    .tm-user-card {
+        flex-wrap: wrap;
+    }
+
+    .tm-user-role {
+        width: 100%;
+        margin-top: 8px;
+    }
+}

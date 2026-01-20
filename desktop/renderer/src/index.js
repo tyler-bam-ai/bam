@@ -6,6 +6,7 @@ import { AuthProvider } from './hooks/useAuth';
 import { DemoModeProvider } from './contexts/DemoModeContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ClientProvider } from './contexts/ClientContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import './styles/index.css';
 
 // Use HashRouter for Electron (file:// protocol compatibility)
@@ -15,15 +16,17 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
     <React.StrictMode>
         <Router>
-            <AuthProvider>
-                <DemoModeProvider>
-                    <ClientProvider>
-                        <ToastProvider>
-                            <App />
-                        </ToastProvider>
-                    </ClientProvider>
-                </DemoModeProvider>
-            </AuthProvider>
+            <ThemeProvider>
+                <AuthProvider>
+                    <DemoModeProvider>
+                        <ClientProvider>
+                            <ToastProvider>
+                                <App />
+                            </ToastProvider>
+                        </ClientProvider>
+                    </DemoModeProvider>
+                </AuthProvider>
+            </ThemeProvider>
         </Router>
     </React.StrictMode>
 );

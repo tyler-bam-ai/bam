@@ -75,6 +75,7 @@ router.post('/from-onboarding', async (req, res) => {
             contactEmail,
             contactPhone,
             website,
+            logoUrl,
             industry,
             numberOfSeats,
             pricingPlan,
@@ -130,9 +131,9 @@ router.post('/from-onboarding', async (req, res) => {
         const now = new Date().toISOString();
 
         await db.run(`
-            INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings, created_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
-        `, [companyId, companyName, industry || null, pricingPlan || 'starter', contactName || null, contactEmail || null, settings, now]);
+            INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, logo_url, settings, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+        `, [companyId, companyName, industry || null, pricingPlan || 'starter', contactName || null, contactEmail || null, logoUrl || null, settings, now]);
 
         console.log(`[ONBOARDING] Created company: ${companyName} (${companyId})`);
 
@@ -615,6 +616,148 @@ router.delete('/:id', optionalAuth, (req, res) => {
     }
 });
 
+// ==========================================
+// USER MANAGEMENT ROUTES
+// ==========================================
+
+/**
+ * Get users for a company
+ * GET /api/clients/:id/users
+ */
+router.get('/:id/users', optionalAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const users = await db.prepare(`
+            SELECT id, email, name, role, created_at
+            FROM users
+            WHERE company_id = ?
+            ORDER BY created_at ASC
+        `).all(id);
+
+        res.json({
+            success: true,
+            users: users.map(u => ({
+                id: u.id,
+                email: u.email,
+                name: u.name,
+                role: u.role,
+                createdAt: u.created_at
+            }))
+        });
+    } catch (error) {
+        console.error('Get users error:', error);
+        res.status(500).json({ error: 'Failed to get users' });
+    }
+});
+
+/**
+ * Invite a new user to a company
+ * POST /api/clients/:id/users
+ */
+router.post('/:id/users', optionalAuth, async (req, res) => {
+    const bcrypt = require('bcrypt');
+
+    try {
+        const { id } = req.params;
+        const { email, name, role = 'knowledge_consumer' } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ error: 'Email is required' });
+        }
+
+        // Check if user already exists
+        const existingUser = await db.get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
+        if (existingUser) {
+            return res.status(400).json({ error: 'User with this email already exists' });
+        }
+
+        // Create user with email as temporary password
+        const userId = uuidv4();
+        const tempPassword = email;
+        const passwordHash = await bcrypt.hash(tempPassword, 10);
+        const now = new Date().toISOString();
+
+        await db.run(`
+            INSERT INTO users (id, email, password_hash, name, role, company_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [userId, email.toLowerCase(), passwordHash, name || email.split('@')[0], role, id, now]);
+
+        res.status(201).json({
+            success: true,
+            user: {
+                id: userId,
+                email: email.toLowerCase(),
+                name: name || email.split('@')[0],
+                role,
+                temporaryPassword: tempPassword
+            }
+        });
+    } catch (error) {
+        console.error('Invite user error:', error);
+        res.status(500).json({ error: 'Failed to invite user' });
+    }
+});
+
+/**
+ * Update user role
+ * PUT /api/clients/:id/users/:userId
+ */
+router.put('/:id/users/:userId', optionalAuth, async (req, res) => {
+    try {
+        const { id, userId } = req.params;
+        const { role, name } = req.body;
+
+        if (role) {
+            await db.run(`
+                UPDATE users SET role = ? WHERE id = ? AND company_id = ?
+            `, [role, userId, id]);
+        }
+
+        if (name) {
+            await db.run(`
+                UPDATE users SET name = ? WHERE id = ? AND company_id = ?
+            `, [name, userId, id]);
+        }
+
+        res.json({ success: true, message: 'User updated' });
+    } catch (error) {
+        console.error('Update user error:', error);
+        res.status(500).json({ error: 'Failed to update user' });
+    }
+});
+
+/**
+ * Delete user from company
+ * DELETE /api/clients/:id/users/:userId
+ */
+router.delete('/:id/users/:userId', optionalAuth, async (req, res) => {
+    try {
+        const { id, userId } = req.params;
+
+        // Don't allow deleting the last admin
+        const admins = await db.prepare(`
+            SELECT COUNT(*) as count FROM users
+            WHERE company_id = ? AND role = 'client_admin'
+        `).get(id);
+
+        const userToDelete = await db.prepare(`
+            SELECT role FROM users WHERE id = ? AND company_id = ?
+        `).get(userId, id);
+
+        if (userToDelete?.role === 'client_admin' && admins.count <= 1) {
+            return res.status(400).json({ error: 'Cannot delete the last admin' });
+        }
+
+        await db.run(`DELETE FROM users WHERE id = ? AND company_id = ?`, [userId, id]);
+
+        res.json({ success: true, message: 'User deleted' });
+    } catch (error) {
+        console.error('Delete user error:', error);
+        res.status(500).json({ error: 'Failed to delete user' });
+    }
+});
+
 // Helper function to format client for response
 function formatClient(client) {
     const settings = client.settings ? JSON.parse(client.settings) : {};
@@ -626,6 +769,7 @@ function formatClient(client) {
         industry: client.industry,
         contactEmail: client.contact_email,
         contactName: client.contact_name,
+        logoUrl: client.logo_url,  // Company logo
         plan: client.plan,
         status: client.status,
         apiKeys: {

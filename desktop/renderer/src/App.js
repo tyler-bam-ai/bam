@@ -18,6 +18,7 @@ import ContentEngine from './pages/ContentEngine';
 import SocialMediaDashboard from './pages/SocialMediaDashboard';
 import Onboarding from './pages/Onboarding';
 import WidgetManagement from './pages/WidgetManagement';
+import TeamManagement from './pages/TeamManagement';
 
 function ProtectedRoute({ children, allowedRoles }) {
     const { user, loading } = useAuth();
@@ -105,6 +106,13 @@ function App() {
                 <Route path="widget/*" element={
                     <ProtectedRoute allowedRoles={['client_admin', 'bam_admin']}>
                         <WidgetManagement />
+                    </ProtectedRoute>
+                } />
+
+                {/* Team Management (client admins) */}
+                <Route path="team" element={
+                    <ProtectedRoute allowedRoles={['client_admin', 'bam_admin']}>
+                        <TeamManagement />
                     </ProtectedRoute>
                 } />
 
