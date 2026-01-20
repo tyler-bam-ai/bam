@@ -129,6 +129,8 @@ async function initializePostgresSchema() {
                 contact_email TEXT,
                 contact_phone TEXT,
                 website TEXT,
+                logo_url TEXT,
+                settings JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -203,6 +205,17 @@ async function initializePostgresSchema() {
         } catch (err) {
             // Column might already exist, that's OK
             console.log('[DB] PostgreSQL profile_picture migration skipped:', err.message);
+        }
+
+        // Migration: Add logo_url and settings columns to companies if they don't exist
+        try {
+            await client.query(`
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo_url TEXT;
+                ALTER TABLE companies ADD COLUMN IF NOT EXISTS settings JSONB;
+            `);
+            console.log('[DB] PostgreSQL migration: Ensured logo_url and settings columns exist in companies');
+        } catch (err) {
+            console.log('[DB] PostgreSQL companies migration skipped:', err.message);
         }
 
         console.log('[DB] PostgreSQL schema initialized');
@@ -347,6 +360,7 @@ function initializeSchema() {
             contact_phone TEXT,
             website TEXT,
             transcript TEXT,
+            logo_url TEXT,
             settings TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP

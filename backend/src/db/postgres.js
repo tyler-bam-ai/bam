@@ -77,6 +77,8 @@ async function initializeSchema() {
                 contact_email TEXT,
                 contact_phone TEXT,
                 website TEXT,
+                logo_url TEXT,
+                settings JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );

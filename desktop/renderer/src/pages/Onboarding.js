@@ -1781,10 +1781,10 @@ function Onboarding() {
     // Audio controls component
     const renderAudioControls = () => (
         <div className="audio-controls-bar">
-            {/* Debug Message Banner */}
+            {/* Status/Error Message Banner */}
             {debugMessage && (
-                <div className="debug-message-banner">
-                    <span>🔍 DEBUG: {debugMessage}</span>
+                <div className={`debug-message-banner ${debugMessage.includes('❌') ? 'error' : ''}`}>
+                    <span>{debugMessage}</span>
                 </div>
             )}
             {/* API Key Error Banner */}

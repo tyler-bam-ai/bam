@@ -813,6 +813,12 @@
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
     font-family: monospace;
+    word-break: break-word;
+}
+
+/* Error state for debug banner */
+.debug-message-banner.error {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
 }
 
 .audio-controls-left,
@@ -1503,6 +1509,7 @@
     color: white !important;
     opacity: 0.8;
 }
+
 /* Inline transcription status - small text that doesn't shift layout */
 .transcription-status-inline {
     display: inline-block;
