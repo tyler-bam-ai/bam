@@ -137,6 +137,10 @@ async function startServer() {
         app.use('/api/system', systemRoutes);
         app.use('/api/transcription', transcriptionRoutes);
 
+        // Debug routes (for troubleshooting)
+        const debugRoutes = require('./routes/debug');
+        app.use('/api/debug', debugRoutes);
+
         // Register 404 and error handlers last
         register404Handler();
 
