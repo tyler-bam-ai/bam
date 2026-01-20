@@ -115,7 +115,7 @@ function Settings() {
 
     async function checkFfmpegStatus() {
         try {
-            const response = await fetch('http://localhost:3001/api/system/ffmpeg-status');
+            const response = await fetch(`${API_URL}/api/system/ffmpeg-status`);
             const data = await response.json();
             setFfmpegStatus({ installed: data.installed, checking: false, installing: false });
         } catch (err) {
@@ -126,7 +126,7 @@ function Settings() {
     async function installFfmpeg() {
         setFfmpegStatus(prev => ({ ...prev, installing: true }));
         try {
-            const response = await fetch('http://localhost:3001/api/system/install-ffmpeg', { method: 'POST' });
+            const response = await fetch(`${API_URL}/api/system/install-ffmpeg`, { method: 'POST' });
             const data = await response.json();
             if (data.success) {
                 setFfmpegStatus({ installed: true, checking: false, installing: false });
@@ -184,7 +184,7 @@ function Settings() {
             // Save to backend API for server-side access
             try {
                 console.log(`[SETTINGS] Saving to backend API...`);
-                const response = await fetch('http://localhost:3001/api/system/api-keys', {
+                const response = await fetch(`${API_URL}/api/system/api-keys`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ service, key })

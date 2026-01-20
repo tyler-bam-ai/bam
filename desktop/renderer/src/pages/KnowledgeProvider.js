@@ -194,7 +194,7 @@ function ScreenRecorder() {
                 formData.append('duration', recordingTime.toString());
                 formData.append('source', selectedSource?.name || 'Screen');
 
-                const response = await fetch('http://localhost:3001/api/knowledge/video', {
+                const response = await fetch(`${API_URL}/api/knowledge/video`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}` },
                     body: formData
@@ -717,9 +717,9 @@ function VoiceRecorder({ isDemoMode }) {
                 const clientId = effectiveClientId;
                 addLog(`Client ID: ${clientId}`);
 
-                // STEP 1: Upload audio to LOCAL backend for Whisper transcription
-                const localBackendUrl = 'http://localhost:3001/api/knowledge/voice';
-                addLog(`Transcribing via local backend: ${localBackendUrl}`);
+                // STEP 1: Upload audio to backend for Whisper transcription
+                const voiceUrl = `${API_URL}/api/knowledge/voice`;
+                addLog(`Transcribing via backend: ${voiceUrl}`);
 
                 try {
                     const token = localStorage.getItem('token');
@@ -761,7 +761,7 @@ function VoiceRecorder({ isDemoMode }) {
                     addLog('Sending to local backend for transcription...');
 
                     // Call LOCAL backend for transcription
-                    const response = await fetch(localBackendUrl, {
+                    const response = await fetch(voiceUrl, {
                         method: 'POST',
                         headers,
                         body: formData

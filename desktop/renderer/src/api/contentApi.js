@@ -5,7 +5,8 @@
  * Handles video upload, transcription, clip detection, and social publishing.
  */
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+import { API_URL } from '../config';
+const API_BASE = `${API_URL}/api`;
 
 /**
  * Get auth headers with JWT token

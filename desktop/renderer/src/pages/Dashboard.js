@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useDemoMode } from '../contexts/DemoModeContext';
+import { API_URL } from '../config';
 import ValueMetricsCards from '../components/ValueMetricsCards';
 import {
     Upload,
@@ -38,7 +39,7 @@ function Dashboard() {
             if (!isDemoMode) {
                 try {
                     const token = localStorage.getItem('token');
-                    const response = await fetch('http://localhost:3001/api/analytics/dashboard', {
+                    const response = await fetch(`${API_URL}/api/analytics/dashboard`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
                     if (response.ok) {
