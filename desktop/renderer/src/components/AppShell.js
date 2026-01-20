@@ -24,7 +24,8 @@ import {
     Presentation,
     ClipboardList,
     X,
-    Lock
+    Lock,
+    Database
 } from 'lucide-react';
 import './AppShell.css';
 
@@ -37,6 +38,7 @@ const NAV_ITEMS = {
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/content', icon: Video, label: 'Content Engine' },
         { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
+        { path: '/knowledge-base', icon: Database, label: 'Knowledge Base', requiresClient: true },
         { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
         { path: '/admin', icon: Building2, label: 'Admin & Clients' },
         { path: '/onboarding', icon: ClipboardList, label: 'Onboarding' },
@@ -46,6 +48,7 @@ const NAV_ITEMS = {
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/content', icon: Video, label: 'Content Engine' },
         { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
+        { path: '/knowledge-base', icon: Database, label: 'Knowledge Base', requiresClient: true },
         { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ],
@@ -166,9 +169,9 @@ function AppShell() {
                 </div>
             )}
 
-            {/* Selected Client Context Banner - Only on Content Engine, Brain Training, BAM Brains, Settings */}
+            {/* Selected Client Context Banner - Only on Content Engine, Brain Training, Knowledge Base, BAM Brains, Settings */}
             {isClientSelected && (
-                ['/content', '/provider', '/consumer', '/settings'].some(p => location.pathname.startsWith(p))
+                ['/content', '/provider', '/knowledge-base', '/consumer', '/settings'].some(p => location.pathname.startsWith(p))
             ) && (
                     <div className="client-context-banner">
                         <Building2 size={16} />

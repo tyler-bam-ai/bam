@@ -222,9 +222,10 @@ router.post('/sessions/:id/deliver', authMiddleware, requireRole('bam_admin'), a
 
         // 2. Create company record
         const companyId = uuidv4();
+        const now = new Date().toISOString();
         await db.run(`
             INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings, created_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'))
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
         `, [
             companyId,
             companyName,
@@ -232,7 +233,8 @@ router.post('/sessions/:id/deliver', authMiddleware, requireRole('bam_admin'), a
             session.plan || 'professional',
             session.contactName || '',
             contactEmail,
-            JSON.stringify({ onboardingData: session.responses })
+            JSON.stringify({ onboardingData: session.responses }),
+            now
         ]);
 
         console.log(`[ONBOARDING] Created company ${companyName} with ID ${companyId}`);
@@ -245,13 +247,14 @@ router.post('/sessions/:id/deliver', authMiddleware, requireRole('bam_admin'), a
         const userId = uuidv4();
         await db.run(`
             INSERT INTO users (id, email, password_hash, name, role, company_id, created_at)
-            VALUES (?, ?, ?, ?, 'client_admin', ?, datetime('now'))
+            VALUES (?, ?, ?, ?, 'client_admin', ?, ?)
         `, [
             userId,
             contactEmail.toLowerCase(),
             passwordHash,
             session.contactName || contactEmail.split('@')[0],
-            companyId
+            companyId,
+            now
         ]);
 
         console.log(`[ONBOARDING] Created user ${contactEmail} with ID ${userId}`);
@@ -833,9 +836,10 @@ router.post('/create-client', authMiddleware, requireRole('bam_admin'), async (r
 
         // 1. Create company record in database
         const companyId = uuidv4();
+        const now = new Date().toISOString();
         await db.run(`
             INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings, created_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'))
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
         `, [
             companyId,
             companyName,
@@ -849,7 +853,8 @@ router.post('/create-client', authMiddleware, requireRole('bam_admin'), async (r
                 website: website || '',
                 phone: contactPhone || '',
                 seats: seats || 5
-            })
+            }),
+            now
         ]);
 
         console.log(`[CREATE-CLIENT] Created company ${companyName} with ID ${companyId}`);
@@ -861,13 +866,14 @@ router.post('/create-client', authMiddleware, requireRole('bam_admin'), async (r
         const userId = uuidv4();
         await db.run(`
             INSERT INTO users (id, email, password_hash, name, role, company_id, created_at)
-            VALUES (?, ?, ?, ?, 'client_admin', ?, datetime('now'))
+            VALUES (?, ?, ?, ?, 'client_admin', ?, ?)
         `, [
             userId,
             contactEmail.toLowerCase(),
             passwordHash,
             contactName || contactEmail.split('@')[0],
-            companyId
+            companyId,
+            now
         ]);
 
         console.log(`[CREATE-CLIENT] Created user ${contactEmail} with ID ${userId}`);

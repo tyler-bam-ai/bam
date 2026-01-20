@@ -127,10 +127,12 @@ router.post('/from-onboarding', async (req, res) => {
             }
         });
 
+        const now = new Date().toISOString();
+
         await db.run(`
             INSERT INTO companies (id, name, industry, plan, status, contact_name, contact_email, settings, created_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, datetime('now'))
-        `, [companyId, companyName, industry || null, pricingPlan || 'starter', contactName || null, contactEmail || null, settings]);
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+        `, [companyId, companyName, industry || null, pricingPlan || 'starter', contactName || null, contactEmail || null, settings, now]);
 
         console.log(`[ONBOARDING] Created company: ${companyName} (${companyId})`);
 
@@ -145,8 +147,8 @@ router.post('/from-onboarding', async (req, res) => {
 
             await db.run(`
                 INSERT INTO users (id, email, password_hash, name, role, company_id, created_at)
-                VALUES (?, ?, ?, ?, 'client_admin', ?, datetime('now'))
-            `, [userId, contactEmail.toLowerCase(), passwordHash, contactName || contactEmail.split('@')[0], companyId]);
+                VALUES (?, ?, ?, ?, 'client_admin', ?, ?)
+            `, [userId, contactEmail.toLowerCase(), passwordHash, contactName || contactEmail.split('@')[0], companyId, now]);
 
             console.log(`[ONBOARDING] Created user: ${contactEmail} (${userId})`);
         }

@@ -493,6 +493,7 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
                 id: item.id,
                 type: item.type,
                 title: item.title,
+                content: item.content, // Full content for viewing
                 wordCount: metadata.wordCount || item.content?.split(/\s+/).filter(w => w).length || 0,
                 source: metadata.source || 'unknown',
                 createdAt: item.created_at,

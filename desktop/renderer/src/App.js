@@ -11,6 +11,7 @@ import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import KnowledgeProvider from './pages/KnowledgeProvider';
 import KnowledgeConsumer from './pages/KnowledgeConsumer';
+import KnowledgeBase from './pages/KnowledgeBase';
 import AdminPanel from './pages/AdminPanel';
 import Settings from './pages/Settings';
 import ContentEngine from './pages/ContentEngine';
@@ -66,6 +67,12 @@ function App() {
                 <Route path="consumer/*" element={
                     <ProtectedRoute allowedRoles={['knowledge_consumer', 'client_admin', 'bam_admin']}>
                         <KnowledgeConsumer />
+                    </ProtectedRoute>
+                } />
+
+                <Route path="knowledge-base" element={
+                    <ProtectedRoute allowedRoles={['client_admin', 'bam_admin']}>
+                        <KnowledgeBase />
                     </ProtectedRoute>
                 } />
 
