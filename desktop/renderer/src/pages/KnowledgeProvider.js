@@ -772,33 +772,9 @@ function VoiceRecorder({ isDemoMode }) {
                         const data = await response.json();
                         addLog(`Transcribed ${data.item?.wordCount || 0} words`, 'success');
 
-                        // STEP 2: Now save transcription to Railway for persistence
-                        if (data.item?.transcription) {
-                            addLog('Saving transcription to Railway...');
-                            try {
-                                const saveResponse = await fetch(`${API_URL}/api/knowledge/text`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                                    },
-                                    body: JSON.stringify({
-                                        clientId,
-                                        type: 'voice_memo',
-                                        title: name,
-                                        content: data.item.transcription,
-                                        wordCount: data.item.wordCount
-                                    })
-                                });
-                                if (saveResponse.ok) {
-                                    addLog('Saved to Railway!', 'success');
-                                } else {
-                                    addLog(`Railway save failed: ${saveResponse.status}`, 'error');
-                                }
-                            } catch (saveErr) {
-                                addLog(`Railway save error: ${saveErr.message}`, 'error');
-                            }
-                        }
+                        // NOTE: Don't save again to Railway - the bundled backend already
+                        // saves to Railway via its db connection. The duplicate save was 
+                        // causing voice memos to appear twice in the knowledge base.
 
                         setRecordings(prev => prev.map(r =>
                             r.id === recordingId
