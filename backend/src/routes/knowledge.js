@@ -480,8 +480,9 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
     try {
         const { clientId } = req.params;
 
+        // Use only base columns that definitely exist in all environments
         const items = await db.prepare(`
-            SELECT id, type, title, content, status, metadata, layer, upvotes, user_id, created_at
+            SELECT id, type, title, content, status, metadata, created_at
             FROM knowledge_items 
             WHERE company_id = ? OR client_id = ?
             ORDER BY created_at DESC
@@ -498,10 +499,10 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
                 source: metadata.source || 'unknown',
                 createdAt: item.created_at,
                 preview: item.content?.substring(0, 150) + (item.content?.length > 150 ? '...' : ''),
-                // Knowledge Vault fields
-                layer: item.layer || 'personal',
-                upvotes: item.upvotes || 0,
-                userId: item.user_id
+                // Knowledge Vault fields - defaults for now until DB migrated
+                layer: metadata.layer || 'personal',
+                upvotes: metadata.upvotes || 0,
+                userId: metadata.userId || null
             };
         });
 
@@ -549,14 +550,22 @@ router.post('/item/:itemId/share', optionalAuth, async (req, res) => {
             return res.status(404).json({ error: 'Item not found' });
         }
 
-        // Create a copy in the library layer
+        // Create a copy with layer stored in metadata
         const newId = uuidv4();
         const now = new Date().toISOString();
+        const originalMetadata = item.metadata ? JSON.parse(item.metadata) : {};
+        const newMetadata = {
+            ...originalMetadata,
+            layer: 'library',
+            sharedBy: userId,
+            upvotes: 0,
+            userId: userId
+        };
 
         await db.run(`
-            INSERT INTO knowledge_items (id, client_id, title, type, content, created_at, user_id, layer, shared_by, upvotes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'library', ?, 0)
-        `, [newId, item.client_id, item.title, item.type, item.content, now, userId, userId]);
+            INSERT INTO knowledge_items (id, company_id, client_id, title, type, content, metadata, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?)
+        `, [newId, item.company_id, item.client_id, item.title, item.type, item.content, JSON.stringify(newMetadata), now]);
 
         console.log(`[KNOWLEDGE] Shared item ${itemId} to library as ${newId}`);
 
@@ -589,14 +598,20 @@ router.post('/item/:itemId/copy', optionalAuth, async (req, res) => {
             return res.status(404).json({ error: 'Item not found' });
         }
 
-        // Create a copy in the target layer
+        // Create a copy with layer in metadata
         const newId = uuidv4();
         const now = new Date().toISOString();
+        const originalMetadata = item.metadata ? JSON.parse(item.metadata) : {};
+        const newMetadata = {
+            ...originalMetadata,
+            layer: targetLayer,
+            userId: userId
+        };
 
         await db.run(`
-            INSERT INTO knowledge_items (id, client_id, title, type, content, created_at, user_id, layer)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, [newId, item.client_id, item.title, item.type, item.content, now, userId, targetLayer]);
+            INSERT INTO knowledge_items (id, company_id, client_id, title, type, content, metadata, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?)
+        `, [newId, item.company_id, item.client_id, item.title, item.type, item.content, JSON.stringify(newMetadata), now]);
 
         console.log(`[KNOWLEDGE] Copied item ${itemId} to ${targetLayer} as ${newId}`);
 
