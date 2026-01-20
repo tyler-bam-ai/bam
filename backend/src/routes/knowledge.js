@@ -484,9 +484,9 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
         const items = await db.prepare(`
             SELECT id, type, title, content, status, metadata, created_at
             FROM knowledge_items 
-            WHERE company_id = ? OR client_id = ?
+            WHERE company_id = ?
             ORDER BY created_at DESC
-        `).all(clientId, clientId);
+        `).all(clientId);
 
         const formattedItems = items.map(item => {
             const metadata = item.metadata ? JSON.parse(item.metadata) : {};
@@ -563,9 +563,9 @@ router.post('/item/:itemId/share', optionalAuth, async (req, res) => {
         };
 
         await db.run(`
-            INSERT INTO knowledge_items (id, company_id, client_id, title, type, content, metadata, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?)
-        `, [newId, item.company_id, item.client_id, item.title, item.type, item.content, JSON.stringify(newMetadata), now]);
+            INSERT INTO knowledge_items (id, company_id, title, type, content, metadata, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'ready', ?)
+        `, [newId, item.company_id, item.title, item.type, item.content, JSON.stringify(newMetadata), now]);
 
         console.log(`[KNOWLEDGE] Shared item ${itemId} to library as ${newId}`);
 
@@ -609,9 +609,9 @@ router.post('/item/:itemId/copy', optionalAuth, async (req, res) => {
         };
 
         await db.run(`
-            INSERT INTO knowledge_items (id, company_id, client_id, title, type, content, metadata, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?)
-        `, [newId, item.company_id, item.client_id, item.title, item.type, item.content, JSON.stringify(newMetadata), now]);
+            INSERT INTO knowledge_items (id, company_id, title, type, content, metadata, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'ready', ?)
+        `, [newId, item.company_id, item.title, item.type, item.content, JSON.stringify(newMetadata), now]);
 
         console.log(`[KNOWLEDGE] Copied item ${itemId} to ${targetLayer} as ${newId}`);
 
