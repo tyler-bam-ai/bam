@@ -15,6 +15,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Users,
+    User,
     Sparkles,
     Menu,
     Video,
