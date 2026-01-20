@@ -1095,13 +1095,13 @@ function Onboarding() {
             recordingLoopRef.current = { mimeType, stopPromise };
 
             isRecordingRef.current = true;
-            fullTranscriptRef.current = '';
-            setFullTranscript('');
-            setLiveTranscript('');
+            // DON'T clear fullTranscriptRef.current - preserve any uploaded transcripts!
+            // Audio recording will APPEND to existing transcript when transcription completes
+            setLiveTranscript('');  // Just clear live transcript display
             setIsRecording(true);
             setTranscriptionStatus('recording');
-            setDebugMessage('🎙️ RECORDING - Speak freely. Transcript will be generated when you stop.');
-            logger.success('AUDIO', 'Continuous recording started');
+            setDebugMessage('🎙️ RECORDING - Speak freely. Transcript will be appended when you stop.');
+            logger.success('AUDIO', 'Continuous recording started (preserving existing transcript)');
 
         } catch (error) {
             logger.error('AUDIO', 'Failed to start:', error.message);
@@ -1178,15 +1178,21 @@ function Onboarding() {
                         const text = await transcribeAudioChunk(audioBlob);
                         if (text && text.trim()) {
                             const transcriptText = text.trim();
-                            console.log('[TRANSCRIBE] === SETTING TRANSCRIPT ===');
-                            console.log('[TRANSCRIBE] Text length:', transcriptText.length);
-                            console.log('[TRANSCRIBE] Text preview:', transcriptText.substring(0, 100));
+                            console.log('[TRANSCRIBE] === APPENDING TRANSCRIPT ===');
+                            console.log('[TRANSCRIBE] New text length:', transcriptText.length);
+                            console.log('[TRANSCRIBE] New text preview:', transcriptText.substring(0, 100));
+                            console.log('[TRANSCRIBE] Existing transcript length:', (fullTranscriptRef.current || '').length);
 
-                            fullTranscriptRef.current = transcriptText;
+                            // APPEND to existing transcript (don't replace - uploaded transcript may already be there)
+                            const separator = fullTranscriptRef.current ? '\n\n--- Audio Recording ---\n\n' : '';
+                            const combinedTranscript = (fullTranscriptRef.current || '') + separator + transcriptText;
+
+                            fullTranscriptRef.current = combinedTranscript;
                             console.log('[TRANSCRIBE] fullTranscriptRef.current NOW:', fullTranscriptRef.current?.substring(0, 50));
+                            console.log('[TRANSCRIBE] Combined transcript length:', combinedTranscript.length);
 
-                            setFullTranscript(transcriptText);
-                            setLiveTranscript(transcriptText);
+                            setFullTranscript(combinedTranscript);
+                            setLiveTranscript(combinedTranscript);
 
                             const wordCount = transcriptText.split(' ').length;
                             setDebugMessage(`✅ Transcribed ${wordCount} words`);
