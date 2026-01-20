@@ -814,14 +814,15 @@ async function queryKnowledgeBase(knowledgeBaseId, query, clientId = null) {
         let knowledgeItems = [];
 
         if (clientId) {
-            // Search within specific client's knowledge
+            // Search within specific client's knowledge - get ALL items for this client
             knowledgeItems = await db.prepare(`
                 SELECT id, type, title, content, metadata, created_at
                 FROM knowledge_items
                 WHERE company_id = ? AND status = 'ready'
                 ORDER BY created_at DESC
-                LIMIT 20
+                LIMIT 50
             `).all(clientId);
+            console.log(`[KNOWLEDGE] Query for company ${clientId} returned ${knowledgeItems?.length || 0} items`);
         } else {
             // Search all knowledge items
             knowledgeItems = await db.prepare(`
@@ -829,7 +830,7 @@ async function queryKnowledgeBase(knowledgeBaseId, query, clientId = null) {
                 FROM knowledge_items
                 WHERE status = 'ready'
                 ORDER BY created_at DESC
-                LIMIT 20
+                LIMIT 50
             `).all();
         }
 
@@ -838,46 +839,28 @@ async function queryKnowledgeBase(knowledgeBaseId, query, clientId = null) {
             return { found: false, documents: [], searchQuery: query };
         }
 
-        console.log(`[KNOWLEDGE] Found ${knowledgeItems.length} knowledge items, filtering by query`);
+        console.log(`[KNOWLEDGE] Found ${knowledgeItems.length} knowledge items for client ${clientId}`);
 
-        // Simple keyword matching (in production, use vector embeddings)
-        const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-
-        const scoredDocs = knowledgeItems.map(item => {
-            const searchText = `${item.title || ''} ${item.content || ''}`.toLowerCase();
-
-            // Count matching keywords
-            let matchCount = 0;
-            queryWords.forEach(word => {
-                if (searchText.includes(word)) matchCount++;
-            });
-
-            // Calculate relevance score
-            const relevanceScore = queryWords.length > 0
-                ? matchCount / queryWords.length
-                : 0.5; // Default score if no query words
-
-            return {
-                id: item.id,
-                title: item.title,
-                type: item.type,
-                content: item.content?.substring(0, 500) + (item.content?.length > 500 ? '...' : ''),
-                relevanceScore: Math.round(relevanceScore * 100) / 100,
-                createdAt: item.created_at
-            };
+        // Log each item for debugging
+        knowledgeItems.forEach((item, i) => {
+            console.log(`[KNOWLEDGE] Item ${i + 1}: type=${item.type}, title="${item.title}", content_preview="${(item.content || '').substring(0, 50)}..."`);
         });
 
-        // Filter and sort by relevance
-        const relevantDocs = scoredDocs
-            .filter(doc => doc.relevanceScore > 0 || queryWords.length === 0)
-            .sort((a, b) => b.relevanceScore - a.relevanceScore)
-            .slice(0, 5);
+        // Return ALL knowledge items so the AI can decide what's relevant
+        // The previous keyword matching was too restrictive
+        const formattedDocs = knowledgeItems.map(item => ({
+            id: item.id,
+            title: item.title,
+            type: item.type,
+            content: item.content || '', // Full content, not truncated
+            createdAt: item.created_at
+        }));
 
-        console.log(`[KNOWLEDGE] Returning ${relevantDocs.length} relevant documents`);
+        console.log(`[KNOWLEDGE] Returning ${formattedDocs.length} documents to AI`);
 
         return {
-            found: relevantDocs.length > 0,
-            documents: relevantDocs,
+            found: formattedDocs.length > 0,
+            documents: formattedDocs,
             searchQuery: query,
             totalItems: knowledgeItems.length
         };

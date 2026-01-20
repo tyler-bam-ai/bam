@@ -351,9 +351,11 @@ router.get('/:id/onboarding', (req, res) => {
  * Get all clients
  * GET /api/clients
  */
-router.get('/', optionalAuth, (req, res) => {
+router.get('/', optionalAuth, async (req, res) => {
     try {
-        const clients = db.prepare(`
+        console.log('[CLIENTS] Fetching all clients from database...');
+
+        const clients = await db.prepare(`
             SELECT c.*, 
                    (SELECT COUNT(*) FROM users WHERE company_id = c.id) as user_count,
                    (SELECT COUNT(*) FROM knowledge_items WHERE company_id = c.id) as knowledge_count
@@ -362,7 +364,9 @@ router.get('/', optionalAuth, (req, res) => {
             ORDER BY c.created_at DESC
         `).all();
 
-        const clientList = clients.map(client => {
+        console.log(`[CLIENTS] Found ${clients?.length || 0} clients in database`);
+
+        const clientList = (clients || []).map(client => {
             const usage = getClientUsageSummary(client.id);
             return {
                 ...formatClient(client),
@@ -376,10 +380,11 @@ router.get('/', optionalAuth, (req, res) => {
             };
         });
 
+        console.log(`[CLIENTS] Returning ${clientList.length} formatted clients`);
         res.json({ clients: clientList });
     } catch (error) {
-        console.error('Get clients error:', error);
-        res.status(500).json({ error: 'Failed to get clients' });
+        console.error('[CLIENTS] Get clients error:', error);
+        res.status(500).json({ error: 'Failed to get clients: ' + error.message });
     }
 });
 
