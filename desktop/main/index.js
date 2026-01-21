@@ -19,8 +19,10 @@ try {
     console.log('[MAIN] electron-log not available, using console');
   }
 
-  autoUpdater.autoDownload = true;  // Automatically download updates
-  autoUpdater.autoInstallOnAppQuit = true;  // Install on app quit
+  // On Mac, disable auto-download since it requires code signing
+  // On Windows, auto-download works fine
+  autoUpdater.autoDownload = process.platform !== 'darwin';
+  autoUpdater.autoInstallOnAppQuit = true;  // Install on app quit (Windows only matters)
 } catch (err) {
   console.log('[MAIN] Auto-updater not available:', err.message);
 }
@@ -158,21 +160,82 @@ function checkForUpdates(isManual = false) {
 
   // For manual checks, add one-time handlers with dialog feedback
   if (isManual) {
-    const onUpdateAvailable = (info) => {
-      // On Mac, auto-update requires code signing, so offer manual download
+    const onUpdateAvailable = async (info) => {
+      // On Mac, auto-update requires code signing, so download DMG directly
       if (process.platform === 'darwin') {
-        dialog.showMessageBox(mainWindow, {
+        const result = await dialog.showMessageBox(mainWindow, {
           type: 'info',
           title: 'Update Available',
           message: `Version ${info.version} is available!`,
-          detail: 'Click "Download Update" to get the latest version from our releases page.',
-          buttons: ['Download Update', 'Later'],
+          detail: 'Click "Download & Install" to get the latest version.',
+          buttons: ['Download & Install', 'Later'],
           defaultId: 0
-        }).then(result => {
-          if (result.response === 0) {
+        });
+
+        if (result.response === 0) {
+          // Show progress dialog
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('show-toast', {
+              type: 'info',
+              message: 'Downloading update...'
+            });
+          }
+
+          try {
+            // Get the DMG download URL from GitHub releases
+            const https = require('https');
+            const fs = require('fs');
+            const os = require('os');
+
+            const dmgUrl = `https://github.com/tyler-bam-ai/bam/releases/download/v${info.version}/BAM-AI-${info.version}-arm64.dmg`;
+            const downloadPath = path.join(os.homedir(), 'Downloads', `BAM-AI-${info.version}.dmg`);
+
+            const file = fs.createWriteStream(downloadPath);
+
+            https.get(dmgUrl, (response) => {
+              // Handle redirect
+              if (response.statusCode === 302 || response.statusCode === 301) {
+                https.get(response.headers.location, (redirectResponse) => {
+                  redirectResponse.pipe(file);
+                  file.on('finish', () => {
+                    file.close();
+                    // Open the DMG file
+                    require('electron').shell.openPath(downloadPath);
+                    dialog.showMessageBox(mainWindow, {
+                      type: 'info',
+                      title: 'Download Complete',
+                      message: 'Update downloaded!',
+                      detail: 'The installer will open shortly. Drag BAM-AI to Applications to install.',
+                      buttons: ['OK']
+                    });
+                  });
+                }).on('error', (err) => {
+                  fs.unlink(downloadPath, () => { });
+                  require('electron').shell.openExternal('https://github.com/tyler-bam-ai/bam/releases/latest');
+                });
+              } else {
+                response.pipe(file);
+                file.on('finish', () => {
+                  file.close();
+                  require('electron').shell.openPath(downloadPath);
+                  dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: 'Download Complete',
+                    message: 'Update downloaded!',
+                    detail: 'The installer will open shortly. Drag BAM-AI to Applications to install.',
+                    buttons: ['OK']
+                  });
+                });
+              }
+            }).on('error', (err) => {
+              console.error('[UPDATER] Download failed:', err);
+              require('electron').shell.openExternal('https://github.com/tyler-bam-ai/bam/releases/latest');
+            });
+          } catch (err) {
+            console.error('[UPDATER] Download error:', err);
             require('electron').shell.openExternal('https://github.com/tyler-bam-ai/bam/releases/latest');
           }
-        });
+        }
       } else {
         // Windows - auto-update works
         dialog.showMessageBox(mainWindow, {
