@@ -35,7 +35,12 @@ jobs:
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Completely disable code signing
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          CSC_LINK: ""
+          CSC_KEY_PASSWORD: ""
+          # Disable notarization
+          NOTARIZE: false
           CI: false
         run: npm run publish:mac
 
