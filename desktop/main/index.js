@@ -117,12 +117,80 @@ function setupAutoUpdater() {
   });
 }
 
-function checkForUpdates() {
+function checkForUpdates(isManual = false) {
   if (!autoUpdater) {
     console.log('[UPDATER] Auto-updater not available');
+    if (isManual && mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Updates Not Available',
+        message: 'Auto-update is not available in development mode.',
+        buttons: ['OK']
+      });
+    }
     return;
   }
-  autoUpdater.checkForUpdates();
+
+  console.log('[UPDATER] Checking for updates...');
+
+  // For manual checks, show a dialog with the result
+  if (isManual) {
+    // Show checking dialog
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Checking for Updates',
+      message: 'Checking for updates...',
+      detail: 'Please wait while we check for new versions.',
+      buttons: ['OK']
+    });
+
+    // Temporarily add handlers for manual check feedback
+    const onUpdateAvailable = (info) => {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Available',
+        message: `Version ${info.version} is available!`,
+        detail: 'The update is downloading in the background. You will be notified when it\'s ready.',
+        buttons: ['OK']
+      });
+    };
+
+    const onUpdateNotAvailable = () => {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'No Updates',
+        message: 'You are running the latest version!',
+        detail: `Current version: ${app.getVersion()}`,
+        buttons: ['OK']
+      });
+    };
+
+    const onError = (err) => {
+      dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Update Check Failed',
+        message: 'Could not check for updates.',
+        detail: err.message || 'Please check your internet connection and try again.',
+        buttons: ['OK']
+      });
+    };
+
+    // Add one-time listeners for manual check feedback
+    autoUpdater.once('update-available', onUpdateAvailable);
+    autoUpdater.once('update-not-available', onUpdateNotAvailable);
+    autoUpdater.once('error', onError);
+
+    // Remove listeners after 30 seconds to avoid memory leaks
+    setTimeout(() => {
+      autoUpdater.removeListener('update-available', onUpdateAvailable);
+      autoUpdater.removeListener('update-not-available', onUpdateNotAvailable);
+      autoUpdater.removeListener('error', onError);
+    }, 30000);
+  }
+
+  autoUpdater.checkForUpdates().catch(err => {
+    console.error('[UPDATER] Check failed:', err.message);
+  });
 }
 
 // =====================================================
@@ -139,7 +207,7 @@ function createMenu() {
         { type: 'separator' },
         {
           label: 'Check for Updates...',
-          click: () => checkForUpdates()
+          click: () => checkForUpdates(true)
         },
         { type: 'separator' },
         { role: 'services' },
@@ -210,7 +278,7 @@ function createMenu() {
       submenu: [
         {
           label: 'Check for Updates...',
-          click: () => checkForUpdates()
+          click: () => checkForUpdates(true)
         },
         { type: 'separator' },
         {
