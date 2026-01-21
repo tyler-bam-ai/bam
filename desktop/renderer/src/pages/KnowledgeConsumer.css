@@ -600,6 +600,27 @@
     }
 }
 
+/* Streaming Cursor */
+.streaming-cursor {
+    display: inline-block;
+    margin-left: 2px;
+    animation: blink 0.7s infinite;
+    color: var(--color-accent-primary);
+}
+
+@keyframes blink {
+
+    0%,
+    50% {
+        opacity: 1;
+    }
+
+    51%,
+    100% {
+        opacity: 0;
+    }
+}
+
 /* Chat Input */
 .chat-input-form {
     padding: var(--space-4) var(--space-6);

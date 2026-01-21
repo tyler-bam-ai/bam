@@ -6,6 +6,7 @@ import { useClientContext } from '../contexts/ClientContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Showcase from './Showcase';
 import Onboarding from '../pages/Onboarding';
+import ThemePicker from './ThemePicker';
 import {
     LayoutDashboard,
     Upload,
@@ -87,7 +88,7 @@ function AppShell() {
     const { user, logout } = useAuth();
     const { isDemoMode, toggleDemoMode } = useDemoMode();
     const { selectedClient, clearClient, isClientSelected } = useClientContext();
-    const { theme, toggleTheme, isDarkMode } = useTheme();
+    const { toggleMode, isDarkMode } = useTheme();
     const navigate = useNavigate();
     const location = useLocation();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -325,7 +326,7 @@ function AppShell() {
                         )}
                         <button
                             className="btn btn-ghost btn-icon theme-toggle-btn"
-                            onClick={toggleTheme}
+                            onClick={toggleMode}
                             title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
                         >
                             {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
@@ -391,6 +392,9 @@ function AppShell() {
                     </div>
                 </div>
             </main>
+
+            {/* Theme Picker - bottom left */}
+            <ThemePicker />
         </div>
     );
 }

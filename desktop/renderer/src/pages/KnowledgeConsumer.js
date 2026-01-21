@@ -916,38 +916,45 @@ function BrainChat({ brainId }) {
 
                 {/* Messages */}
                 <div className="chat-messages">
-                    {messages.map((message) => (
-                        <div key={message.id} className={`message ${message.role}`}>
-                            <div className="message-avatar" style={message.role === 'assistant' ? { backgroundColor: `${brain.color}20`, color: brain.color } : {}}>
-                                {message.role === 'assistant' ? <BrainIcon size={20} /> : <User size={20} />}
-                            </div>
-                            <div className="message-content">
-                                <div className="message-header">
-                                    <span className="message-sender">
-                                        {message.role === 'assistant' ? brain.name : 'You'}
-                                    </span>
-                                    <span className="message-time">
-                                        {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
+                    {messages
+                        // Don't render empty streaming messages - just show typing dots instead
+                        .filter(message => !(message.isStreaming && !message.content))
+                        .map((message) => (
+                            <div key={message.id} className={`message ${message.role}`}>
+                                <div className="message-avatar" style={message.role === 'assistant' ? { backgroundColor: `${brain.color}20`, color: brain.color } : {}}>
+                                    {message.role === 'assistant' ? <BrainIcon size={20} /> : <User size={20} />}
                                 </div>
-                                <div className="message-body">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                        {message.content}
-                                    </ReactMarkdown>
-                                </div>
-                                {message.role === 'assistant' && (
-                                    <div className="message-actions">
-                                        <button className="action-btn" onClick={() => handleCopy(message.content, message.id)}>
-                                            {copiedId === message.id ? <Check size={14} /> : <Copy size={14} />}
-                                        </button>
-                                        <button className="action-btn"><ThumbsUp size={14} /></button>
-                                        <button className="action-btn"><ThumbsDown size={14} /></button>
-                                        <button className="action-btn"><RotateCcw size={14} /></button>
+                                <div className="message-content">
+                                    <div className="message-header">
+                                        <span className="message-sender">
+                                            {message.role === 'assistant' ? brain.name : 'You'}
+                                        </span>
+                                        <span className="message-time">
+                                            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
                                     </div>
-                                )}
+                                    <div className="message-body">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                            {message.content}
+                                        </ReactMarkdown>
+                                        {/* Show streaming cursor for in-progress messages */}
+                                        {message.isStreaming && message.content && (
+                                            <span className="streaming-cursor">▋</span>
+                                        )}
+                                    </div>
+                                    {message.role === 'assistant' && !message.isStreaming && (
+                                        <div className="message-actions">
+                                            <button className="action-btn" onClick={() => handleCopy(message.content, message.id)}>
+                                                {copiedId === message.id ? <Check size={14} /> : <Copy size={14} />}
+                                            </button>
+                                            <button className="action-btn"><ThumbsUp size={14} /></button>
+                                            <button className="action-btn"><ThumbsDown size={14} /></button>
+                                            <button className="action-btn"><RotateCcw size={14} /></button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
 
                     {isLoading && (
                         <div className="message assistant">

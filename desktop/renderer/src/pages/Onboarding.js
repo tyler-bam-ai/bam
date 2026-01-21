@@ -423,6 +423,40 @@ function Onboarding() {
         setTimeout(() => setShowExportSuccess(false), 3000);
     };
 
+    // Import session data from JSON file
+    const importFromJSON = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const importedData = JSON.parse(text);
+
+                // Validate it's our format
+                if (!importedData.exportVersion) {
+                    showToast('Invalid file format. Please use a BAM.ai exported JSON file.', 'error', 4000);
+                    return;
+                }
+
+                // Remove export metadata and load the session data
+                const { exportedAt, exportVersion, ...sessionFields } = importedData;
+                setSessionData(prev => ({
+                    ...prev,
+                    ...sessionFields
+                }));
+
+                showToast(`Imported data for ${importedData.companyName || 'Unknown Company'}`, 'success', 3000);
+            } catch (err) {
+                console.error('Import failed:', err);
+                showToast('Failed to import file. Make sure it\'s a valid JSON.', 'error', 4000);
+            }
+        };
+        input.click();
+    };
 
     // Export client profile to downloadable PDF (HTML-based)
     const exportClientPDF = () => {
@@ -1267,7 +1301,7 @@ function Onboarding() {
     const [isSavingClient, setIsSavingClient] = useState(false);
     const [clientSaved, setClientSaved] = useState(false);
     const [showCredentialsPopup, setShowCredentialsPopup] = useState(false);
-    const [savedCredentials, setSavedCredentials] = useState({ email: '', password: '' });
+    const [savedCredentials, setSavedCredentials] = useState([]); // Array of all created accounts
 
     const saveClientToDatabase = async () => {
         console.log('[SAVE] === SAVE STARTED ===');
@@ -1383,12 +1417,17 @@ function Onboarding() {
                 const transcriptMsg = data.hasTranscript ? ' (with transcript)' : '';
                 setDebugMessage(`✅ Client "${sessionData.companyName}" saved to database${transcriptMsg}!`);
 
-                // Show credentials popup if user was created
-                if (data.temporaryPassword && sessionData.contactEmail) {
-                    setSavedCredentials({
+                // Show credentials popup if users were created
+                if (data.createdUsers && data.createdUsers.length > 0) {
+                    setSavedCredentials(data.createdUsers);
+                    setShowCredentialsPopup(true);
+                } else if (data.temporaryPassword && sessionData.contactEmail) {
+                    // Fallback for single user
+                    setSavedCredentials([{
                         email: sessionData.contactEmail,
-                        password: data.temporaryPassword
-                    });
+                        temporaryPassword: data.temporaryPassword,
+                        role: 'client_admin'
+                    }]);
                     setShowCredentialsPopup(true);
                 } else {
                     // Just show success toast if no user created
@@ -2403,7 +2442,11 @@ function Onboarding() {
                     <div className="review-actions">
                         <button className="btn btn-secondary" onClick={exportToJSON}>
                             <Download size={18} />
-                            Export Data as JSON
+                            Export
+                        </button>
+                        <button className="btn btn-secondary" onClick={importFromJSON}>
+                            <Upload size={18} />
+                            Import
                         </button>
                         <button className="btn btn-secondary" onClick={saveToFile}>
                             <Save size={18} />
@@ -2733,15 +2776,15 @@ function Onboarding() {
                 </div>
             )}
 
-            {/* Credentials Popup Modal */}
-            {showCredentialsPopup && (
+            {/* Credentials Popup Modal - Shows ALL created accounts */}
+            {showCredentialsPopup && savedCredentials.length > 0 && (
                 <div className="modal-overlay" onClick={() => setShowCredentialsPopup(false)}>
-                    <div className="modal-content credentials-modal" onClick={e => e.stopPropagation()}>
+                    <div className="modal-content credentials-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', maxHeight: '80vh', overflow: 'auto' }}>
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                             <CheckCircle size={48} style={{ color: 'var(--color-success)', marginBottom: '12px' }} />
                             <h3 style={{ margin: '0 0 8px 0' }}>Client Created Successfully!</h3>
                             <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>
-                                Share these login credentials with {sessionData.companyName}
+                                {savedCredentials.length} account{savedCredentials.length > 1 ? 's' : ''} created for {sessionData.companyName}
                             </p>
                         </div>
 
@@ -2749,67 +2792,47 @@ function Onboarding() {
                             background: 'var(--color-surface-elevated)',
                             padding: '16px',
                             borderRadius: '8px',
-                            marginBottom: '16px'
+                            marginBottom: '16px',
+                            maxHeight: '300px',
+                            overflowY: 'auto'
                         }}>
-                            <div style={{ marginBottom: '12px' }}>
-                                <label style={{
-                                    display: 'block',
-                                    fontSize: '0.75rem',
-                                    color: 'var(--color-text-tertiary)',
-                                    marginBottom: '4px'
-                                }}>Email (Username)</label>
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
+                            {savedCredentials.map((cred, index) => (
+                                <div key={cred.email || index} style={{
+                                    padding: '12px',
                                     background: 'var(--color-background)',
-                                    padding: '10px 12px',
                                     borderRadius: '6px',
-                                    fontFamily: 'monospace'
+                                    marginBottom: index < savedCredentials.length - 1 ? '8px' : 0
                                 }}>
-                                    <span style={{ flex: 1 }}>{savedCredentials.email}</span>
-                                    <button
-                                        className="btn btn-ghost"
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(savedCredentials.email);
-                                            showToast('Email copied!', 'success', 2000);
-                                        }}
-                                        style={{ padding: '4px 8px', fontSize: '0.75rem' }}
-                                    >
-                                        Copy
-                                    </button>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{cred.email}</span>
+                                        <span style={{
+                                            padding: '2px 8px',
+                                            background: cred.role === 'client_admin' ? 'var(--color-accent-primary)' : 'var(--color-text-muted)',
+                                            color: 'white',
+                                            borderRadius: '4px',
+                                            fontSize: '0.65rem',
+                                            fontWeight: 600
+                                        }}>
+                                            {cred.role === 'client_admin' ? 'ADMIN' : 'USER'}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
+                                            Password: {cred.temporaryPassword}
+                                        </span>
+                                        <button
+                                            className="btn btn-ghost"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(cred.temporaryPassword);
+                                                showToast('Password copied!', 'success', 2000);
+                                            }}
+                                            style={{ padding: '2px 6px', fontSize: '0.65rem' }}
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-
-                            <div>
-                                <label style={{
-                                    display: 'block',
-                                    fontSize: '0.75rem',
-                                    color: 'var(--color-text-tertiary)',
-                                    marginBottom: '4px'
-                                }}>Temporary Password</label>
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    background: 'var(--color-background)',
-                                    padding: '10px 12px',
-                                    borderRadius: '6px',
-                                    fontFamily: 'monospace'
-                                }}>
-                                    <span style={{ flex: 1 }}>{savedCredentials.password}</span>
-                                    <button
-                                        className="btn btn-ghost"
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(savedCredentials.password);
-                                            showToast('Password copied!', 'success', 2000);
-                                        }}
-                                        style={{ padding: '4px 8px', fontSize: '0.75rem' }}
-                                    >
-                                        Copy
-                                    </button>
-                                </div>
-                            </div>
+                            ))}
                         </div>
 
                         <p style={{
@@ -2818,10 +2841,33 @@ function Onboarding() {
                             textAlign: 'center',
                             marginBottom: '16px'
                         }}>
-                            The client can change their password in Settings → Security after logging in.
+                            Users can change their password in Settings → Security after logging in.
                         </p>
 
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => {
+                                    // Download credentials as text file
+                                    const content = `${sessionData.companyName} - Login Credentials\n${'='.repeat(40)}\n\n` +
+                                        savedCredentials.map(c =>
+                                            `Email: ${c.email}\nPassword: ${c.temporaryPassword}\nRole: ${c.role === 'client_admin' ? 'Admin' : 'User'}\n`
+                                        ).join('\n');
+                                    const blob = new Blob([content], { type: 'text/plain' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `${sessionData.companyName.replace(/\s+/g, '_')}_credentials.txt`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                    URL.revokeObjectURL(url);
+                                    showToast('Credentials downloaded!', 'success', 2000);
+                                }}
+                                style={{ minWidth: '120px' }}
+                            >
+                                <Download size={16} /> Download
+                            </button>
                             <button
                                 className="btn btn-primary"
                                 onClick={() => setShowCredentialsPopup(false)}

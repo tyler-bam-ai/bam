@@ -453,19 +453,145 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
 });
 
 /**
- * Delete a knowledge item
+ * Soft delete a knowledge item (moves to trash)
  * DELETE /api/knowledge/item/:itemId
  */
 router.delete('/item/:itemId', optionalAuth, async (req, res) => {
     try {
         const { itemId } = req.params;
 
-        await db.prepare('DELETE FROM knowledge_items WHERE id = ?').run(itemId);
+        // Soft delete by setting status to 'deleted'
+        await db.run(`
+            UPDATE knowledge_items 
+            SET status = 'deleted', metadata = metadata || '{"deletedAt": "' || datetime('now') || '"}'
+            WHERE id = ?
+        `, itemId);
 
-        res.json({ success: true, message: 'Knowledge item deleted' });
+        res.json({ success: true, message: 'Item moved to trash' });
     } catch (error) {
-        console.error('[KNOWLEDGE] Delete error:', error);
+        console.error('[KNOWLEDGE] Soft delete error:', error);
         res.status(500).json({ error: 'Failed to delete knowledge item' });
+    }
+});
+
+/**
+ * Get trash items for a client (admin only)
+ * GET /api/knowledge/trash/:clientId
+ */
+router.get('/trash/:clientId', optionalAuth, async (req, res) => {
+    try {
+        const { clientId } = req.params;
+
+        const items = await db.prepare(`
+            SELECT id, type, title, content, metadata, layer, created_at
+            FROM knowledge_items 
+            WHERE (company_id = ? OR client_id = ?) AND status = 'deleted'
+            ORDER BY created_at DESC
+        `).all(clientId, clientId);
+
+        res.json({ success: true, items, layer: 'trash' });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Trash fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch trash items' });
+    }
+});
+
+/**
+ * Restore item from trash
+ * POST /api/knowledge/trash/:itemId/restore
+ */
+router.post('/trash/:itemId/restore', optionalAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+
+        await db.run(`
+            UPDATE knowledge_items SET status = 'ready' WHERE id = ?
+        `, itemId);
+
+        res.json({ success: true, message: 'Item restored from trash' });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Restore error:', error);
+        res.status(500).json({ error: 'Failed to restore item' });
+    }
+});
+
+/**
+ * Empty trash (permanent delete, admin only)
+ * DELETE /api/knowledge/trash/:clientId/empty
+ */
+router.delete('/trash/:clientId/empty', optionalAuth, async (req, res) => {
+    try {
+        const { clientId } = req.params;
+
+        const result = await db.run(`
+            DELETE FROM knowledge_items 
+            WHERE (company_id = ? OR client_id = ?) AND status = 'deleted'
+        `, clientId, clientId);
+
+        res.json({ success: true, deletedCount: result.changes, message: 'Trash emptied' });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Empty trash error:', error);
+        res.status(500).json({ error: 'Failed to empty trash' });
+    }
+});
+
+/**
+ * Move item to vault (admin only)
+ * POST /api/knowledge/item/:itemId/vault
+ */
+router.post('/item/:itemId/vault', optionalAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+
+        await db.run(`
+            UPDATE knowledge_items SET layer = 'vault', is_hidden = FALSE WHERE id = ?
+        `, itemId);
+
+        res.json({ success: true, message: 'Item moved to vault' });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Move to vault error:', error);
+        res.status(500).json({ error: 'Failed to move to vault' });
+    }
+});
+
+/**
+ * Download library item to personal (creates a copy)
+ * POST /api/knowledge/library/:itemId/download
+ */
+router.post('/library/:itemId/download', optionalAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const { userId, clientId } = req.body;
+
+        if (!userId || !clientId) {
+            return res.status(400).json({ error: 'userId and clientId required' });
+        }
+
+        // Get the library item
+        const item = await db.prepare('SELECT * FROM knowledge_items WHERE id = ?').get(itemId);
+        if (!item) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+
+        // Create a copy in personal layer
+        const newId = uuidv4();
+        const metadata = JSON.parse(item.metadata || '{}');
+        metadata.copiedFrom = itemId;
+        metadata.copiedAt = new Date().toISOString();
+
+        await db.run(`
+            INSERT INTO knowledge_items (id, company_id, client_id, user_id, type, title, content, metadata, layer, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'personal', 'ready')
+        `, newId, clientId, clientId, userId, item.type, item.title, item.content, JSON.stringify(metadata));
+
+        res.json({
+            success: true,
+            newId,
+            message: 'Item downloaded to My Knowledge'
+        });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Download error:', error);
+        res.status(500).json({ error: 'Failed to download item' });
     }
 });
 
