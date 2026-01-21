@@ -216,13 +216,13 @@ router.post('/text', optionalAuth, async (req, res) => {
 });
 
 /**
- * Upload and analyze video
+ * Upload and analyze video/screen recording
  * POST /api/knowledge/video
- * Uses Gemini via OpenRouter for video analysis
+ * Uses Gemini 2.0 Flash for screen recording analysis with detailed transcription
  */
 router.post('/video', optionalAuth, upload.single('video'), async (req, res) => {
     try {
-        const { clientId, title } = req.body;
+        const { clientId, title, duration, source } = req.body;
 
         if (!req.file) {
             return res.status(400).json({ error: 'No video file uploaded' });
@@ -234,152 +234,86 @@ router.post('/video', optionalAuth, upload.single('video'), async (req, res) => 
 
         console.log(`[KNOWLEDGE] Video upload for client ${clientId}: ${req.file.size} bytes, ${req.file.mimetype}`);
 
-        // Get API keys
-        const openrouterKey = req.headers['x-openrouter-key'] || process.env.OPENROUTER_API_KEY;
-        const openaiKey = req.headers['x-openai-key'] || process.env.OPENAI_API_KEY;
+        // Get Gemini API key - priority: request header > Railway env
+        const geminiService = require('../services/geminiVideoService');
+        const geminiKey = geminiService.getGeminiApiKey(req.headers['x-gemini-key']);
 
-        let description = '';
-        let transcription = '';
-
-        // First, try to transcribe audio with Whisper
-        if (openaiKey) {
-            try {
-                const OpenAI = require('openai');
-                const openai = new OpenAI({ apiKey: openaiKey });
-
-                // Extract audio and transcribe
-                const tempVideoPath = path.join(os.tmpdir(), `video_${Date.now()}.mp4`);
-                const tempAudioPath = path.join(os.tmpdir(), `audio_${Date.now()}.mp3`);
-
-                fs.writeFileSync(tempVideoPath, req.file.buffer);
-
-                // Try to extract audio with ffmpeg
-                const { exec } = require('child_process');
-                const { promisify } = require('util');
-                const execAsync = promisify(exec);
-
-                try {
-                    await execAsync(`ffmpeg -i "${tempVideoPath}" -vn -acodec libmp3lame -y "${tempAudioPath}" 2>/dev/null`);
-
-                    if (fs.existsSync(tempAudioPath) && fs.statSync(tempAudioPath).size > 0) {
-                        const result = await openai.audio.transcriptions.create({
-                            file: fs.createReadStream(tempAudioPath),
-                            model: 'whisper-1',
-                            language: 'en'
-                        });
-                        transcription = result.text;
-                        fs.unlinkSync(tempAudioPath);
-                    }
-                } catch (ffmpegError) {
-                    console.log('[KNOWLEDGE] Audio extraction failed:', ffmpegError.message);
-                }
-
-                fs.unlinkSync(tempVideoPath);
-                console.log(`[KNOWLEDGE] Transcribed video audio: ${transcription.split(' ').length} words`);
-            } catch (whisperError) {
-                console.error('[KNOWLEDGE] Video transcription failed:', whisperError.message);
-            }
+        if (!geminiKey) {
+            return res.status(400).json({
+                error: 'Gemini API key required',
+                message: 'Screen recording analysis requires a Gemini API key. Please add your key in Settings → API Keys.',
+                code: 'GEMINI_KEY_MISSING'
+            });
         }
 
-        // Then, analyze video with Gemini via OpenRouter
-        if (openrouterKey) {
-            try {
-                const fetch = require('node-fetch');
+        console.log(`[KNOWLEDGE] Analyzing video with Gemini...`);
 
-                // Convert video to base64 for Gemini
-                const videoBase64 = req.file.buffer.toString('base64');
-                const mimeType = req.file.mimetype;
-
-                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${openrouterKey}`,
-                        'Content-Type': 'application/json',
-                        'HTTP-Referer': 'https://bam.ai',
-                        'X-Title': 'BAM.ai Brain Training'
-                    },
-                    body: JSON.stringify({
-                        model: 'google/gemini-2.0-flash-001',
-                        messages: [{
-                            role: 'user',
-                            content: [
-                                {
-                                    type: 'text',
-                                    text: `Analyze this video and provide a detailed description of:
-1. What is visually happening in the video
-2. Any text, diagrams, or UI elements shown
-3. The main topic or purpose of the video
-4. Key information that would be useful for a knowledge base
-
-Be thorough but concise. This will be used to train an AI assistant.`
-                                },
-                                {
-                                    type: 'image_url',
-                                    image_url: {
-                                        url: `data:${mimeType};base64,${videoBase64}`
-                                    }
-                                }
-                            ]
-                        }],
-                        max_tokens: 2000
-                    })
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    description = data.choices?.[0]?.message?.content || '';
-                    console.log(`[KNOWLEDGE] Gemini analysis: ${description.length} chars`);
-                } else {
-                    const errorData = await response.text();
-                    console.error('[KNOWLEDGE] OpenRouter error:', errorData);
-                }
-            } catch (geminiError) {
-                console.error('[KNOWLEDGE] Gemini analysis failed:', geminiError.message);
-            }
+        // Analyze video with Gemini
+        let analysis;
+        try {
+            analysis = await geminiService.analyzeVideoBuffer(
+                req.file.buffer,
+                req.file.mimetype,
+                geminiKey
+            );
+            console.log(`[KNOWLEDGE] Gemini analysis complete: ${analysis.transcript.length} chars`);
+        } catch (geminiError) {
+            console.error('[KNOWLEDGE] Gemini analysis failed:', geminiError.message);
+            return res.status(500).json({
+                error: 'Video analysis failed',
+                message: geminiError.message,
+                code: 'GEMINI_ANALYSIS_FAILED'
+            });
         }
 
-        // Combine transcription and description
+        // Format the content with transcript and summary
         const fullContent = [
-            description ? `## Video Analysis\n${description}` : '',
-            transcription ? `## Audio Transcription\n${transcription}` : ''
-        ].filter(Boolean).join('\n\n---\n\n') || '[No analysis available - check API keys]';
+            '## Screen Recording Transcript\n',
+            analysis.transcript,
+            '\n\n---\n\n',
+            '## Summary\n',
+            analysis.summary,
+            `\n\n*Analyzed with ${analysis.model} on ${analysis.analyzedAt}*`
+        ].join('');
 
         // Save to knowledge_items table
         const itemId = uuidv4();
-        const itemTitle = title || `Video - ${new Date().toLocaleString()}`;
+        const itemTitle = title || `Screen Recording - ${new Date().toLocaleString()}`;
         const metadata = JSON.stringify({
-            type: 'video',
+            type: 'screen_recording',
+            source: source || 'Screen Recording',
+            duration: duration || 0,
             fileSize: req.file.size,
             mimeType: req.file.mimetype,
-            hasDescription: !!description,
-            hasTranscription: !!transcription,
-            wordCount: fullContent.split(/\s+/).filter(w => w).length,
-            source: 'brain_training',
+            hasTranscript: true,
+            wordCount: fullContent.split(/\\s+/).filter(w => w).length,
+            geminiModel: analysis.model,
+            analyzedAt: analysis.analyzedAt,
             createdAt: new Date().toISOString()
         });
 
         await db.prepare(`
             INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(itemId, clientId, 'video', itemTitle, fullContent, 'ready', metadata);
+        `).run(itemId, clientId, 'screen_recording', itemTitle, fullContent, 'ready', metadata);
 
-        console.log(`[KNOWLEDGE] Saved video ${itemId} for client ${clientId}`);
+        console.log(`[KNOWLEDGE] Saved screen recording ${itemId} for client ${clientId}`);
 
         res.json({
             success: true,
             item: {
                 id: itemId,
                 title: itemTitle,
-                type: 'video',
-                hasDescription: !!description,
-                hasTranscription: !!transcription,
-                wordCount: fullContent.split(/\s+/).filter(w => w).length,
-                preview: fullContent.substring(0, 300) + (fullContent.length > 300 ? '...' : '')
+                type: 'screen_recording',
+                hasTranscript: true,
+                wordCount: fullContent.split(/\\s+/).filter(w => w).length,
+                summary: analysis.summary,
+                preview: fullContent.substring(0, 500) + (fullContent.length > 500 ? '...' : '')
             }
         });
     } catch (error) {
         console.error('[KNOWLEDGE] Video upload error:', error);
-        res.status(500).json({ error: 'Failed to process video' });
+        res.status(500).json({ error: 'Failed to process video', details: error.message });
     }
 });
 

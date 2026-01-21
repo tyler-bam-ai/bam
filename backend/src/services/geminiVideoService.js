@@ -1,269 +1,236 @@
 /**
- * Gemini Video Understanding Service
+ * Gemini Video Analysis Service
  * 
- * Uses Gemini's native video understanding to analyze videos
- * and detect viral-worthy moments by actually "watching" the video.
+ * Analyzes screen recordings using Gemini 2.0 Flash to generate
+ * comprehensive transcripts with visual descriptions.
  */
 
-const { GoogleGenerativeAI, FileState } = require('@google/generative-ai');
-const { GoogleAIFileManager } = require('@google/generative-ai/server');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const fs = require('fs');
 const path = require('path');
 
-// Lazy-initialize Gemini client
-let genAI = null;
-let fileManager = null;
-let cachedApiKey = null;
-
 /**
- * Get API key from environment or settings file
+ * Get Gemini API key from various sources
+ * Priority: request header > local storage > Railway env
  */
-function getApiKey() {
-    // First check environment variable
-    if (process.env.GEMINI_API_KEY) {
+function getGeminiApiKey(requestKey = null) {
+    // 1. Check request header (passed from frontend)
+    if (requestKey && requestKey.trim()) {
+        return requestKey;
+    }
+
+    // 2. Check Railway environment variable
+    if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()) {
         return process.env.GEMINI_API_KEY;
     }
 
-    // Check for settings file (written by Electron store)
-    try {
-        const settingsPath = path.join(__dirname, '../../data/api-keys.json');
-        if (fs.existsSync(settingsPath)) {
-            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-            if (settings.google) {
-                return settings.google;
-            }
-        }
-    } catch (err) {
-        console.log('[GeminiVideo] Could not read settings file:', err.message);
+    // 3. Check legacy Google API key env
+    if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY.trim()) {
+        return process.env.GOOGLE_API_KEY;
     }
 
     return null;
 }
 
-function getGeminiClient() {
-    const apiKey = getApiKey();
-
-    // Reinitialize if API key changed
-    if (apiKey && apiKey !== cachedApiKey) {
-        genAI = new GoogleGenerativeAI(apiKey);
-        fileManager = new GoogleAIFileManager(apiKey);
-        cachedApiKey = apiKey;
-    }
-
-    if (!genAI) {
-        if (!apiKey) {
-            throw new Error('Gemini API key not configured. Please add it in Settings > API Keys.');
-        }
-        genAI = new GoogleGenerativeAI(apiKey);
-        fileManager = new GoogleAIFileManager(apiKey);
-        cachedApiKey = apiKey;
-    }
-
-    return { genAI, fileManager };
-}
-
-// Viral clip detection prompt - asks Gemini to watch the video
-const VIRAL_DETECTION_PROMPT = `You are an expert video editor and social media strategist. Watch this video carefully and identify 3-8 moments that would make excellent short-form clips for TikTok, Instagram Reels, or YouTube Shorts.
-
-For each viral moment you detect, analyze BOTH the visual and audio elements:
-- Visual: facial expressions, gestures, scene changes, product shots, b-roll
-- Audio: tone, emphasis, pauses, emotional delivery, key phrases
-
-Return your analysis as a JSON array with this exact structure:
-{
-  "clips": [
-    {
-      "startTime": <seconds as number>,
-      "endTime": <seconds as number>,
-      "viralityScore": <0-100 rating>,
-      "hookType": "insight" | "emotion" | "surprise" | "humor" | "cta" | "story",
-      "reason": "<why this moment is compelling, mentioning both visual and audio elements>",
-      "suggestedCaption": "<viral-worthy caption with emoji for social media>",
-      "transcript": "<what is said during this segment>",
-      "visualHighlight": "<what makes this visually compelling>"
-    }
-  ]
-}
-
-SCORING CRITERIA:
-- 90-100: Exceptional hook + high emotional impact + shareable insight
-- 80-89: Strong hook with good engagement potential
-- 70-79: Solid content, decent viral potential
-- 60-69: Average content, moderate potential
-- Below 60: Weak viral potential
-
-Focus on:
-1. Strong opening hooks (first 3 seconds must grab attention)
-2. Emotional peaks (frustration, excitement, revelation)
-3. Key insights or "aha" moments
-4. Surprising or unexpected content
-5. Clear calls to action
-6. Story completeness (clip should feel self-contained)
-
-IMPORTANT: Return ONLY valid JSON, no markdown formatting or extra text.`;
-
 /**
- * Upload a video to Gemini Files API for analysis
+ * Analyze a video file using Gemini 2.0 Flash
  * @param {string} videoPath - Path to the video file
- * @returns {Promise<Object>} - Uploaded file info
+ * @param {string} apiKey - Gemini API key
+ * @returns {Promise<{transcript: string, summary: string}>}
  */
-async function uploadVideoToGemini(videoPath) {
-    const { fileManager } = getGeminiClient();
-
-    // Get file info
-    const stats = fs.statSync(videoPath);
-    const fileName = path.basename(videoPath);
-    const mimeType = getMimeType(videoPath);
-
-    console.log(`[GeminiVideo] Uploading video: ${fileName} (${(stats.size / 1024 / 1024).toFixed(1)}MB)`);
-
-    // Upload the file
-    const uploadResult = await fileManager.uploadFile(videoPath, {
-        mimeType: mimeType,
-        displayName: fileName
-    });
-
-    console.log(`[GeminiVideo] Upload complete. File URI: ${uploadResult.file.uri}`);
-    console.log(`[GeminiVideo] File state: ${uploadResult.file.state}`);
-
-    // Wait for file to be processed if needed
-    let file = uploadResult.file;
-    while (file.state === FileState.PROCESSING) {
-        console.log('[GeminiVideo] Waiting for file processing...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        const getFileResult = await fileManager.getFile(file.name);
-        file = getFileResult;
+async function analyzeVideo(videoPath, apiKey) {
+    if (!apiKey) {
+        throw new Error('Gemini API key is required for video analysis');
     }
 
-    if (file.state === FileState.FAILED) {
-        throw new Error('Video processing failed in Gemini');
-    }
+    const genAI = new GoogleGenerativeAI(apiKey);
 
-    console.log(`[GeminiVideo] File ready for analysis. State: ${file.state}`);
-    return file;
-}
+    // Use gemini-2.0-flash for video understanding
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-/**
- * Analyze a video using Gemini's video understanding
- * @param {string} videoPath - Path to the video file
- * @returns {Promise<Array>} - Array of detected clips with virality scores
- */
-async function analyzeVideoForClips(videoPath) {
-    const { genAI } = getGeminiClient();
+    // Read video file as base64
+    const videoBuffer = fs.readFileSync(videoPath);
+    const videoBase64 = videoBuffer.toString('base64');
 
-    console.log(`[GeminiVideo] Starting video analysis: ${videoPath}`);
-
-    // Upload video to Gemini
-    const uploadedFile = await uploadVideoToGemini(videoPath);
-
-    // Get the generative model
-    const model = genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash-exp',
-        generationConfig: {
-            temperature: 0.7,
-            topP: 0.95,
-            maxOutputTokens: 8192
-        }
-    });
-
-    console.log('[GeminiVideo] Sending video to Gemini for analysis...');
-
-    // Generate content with video
-    const result = await model.generateContent([
-        {
-            fileData: {
-                fileUri: uploadedFile.uri,
-                mimeType: uploadedFile.mimeType
-            }
-        },
-        { text: VIRAL_DETECTION_PROMPT }
-    ]);
-
-    const responseText = result.response.text();
-    console.log('[GeminiVideo] Received analysis response');
-
-    // Parse the JSON response
-    let clips = [];
-    try {
-        // Try to extract JSON from the response
-        const jsonMatch = responseText.match(/\{[\s\S]*"clips"[\s\S]*\}/);
-        if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            clips = parsed.clips || [];
-        } else {
-            // Try parsing as array directly
-            const arrayMatch = responseText.match(/\[[\s\S]*\]/);
-            if (arrayMatch) {
-                clips = JSON.parse(arrayMatch[0]);
-            }
-        }
-    } catch (parseError) {
-        console.error('[GeminiVideo] Failed to parse response:', parseError);
-        console.log('[GeminiVideo] Raw response:', responseText.substring(0, 500));
-        throw new Error('Failed to parse Gemini response as JSON');
-    }
-
-    console.log(`[GeminiVideo] Detected ${clips.length} viral moments`);
-
-    // Validate and normalize clips
-    const validClips = clips
-        .filter(clip =>
-            typeof clip.startTime === 'number' &&
-            typeof clip.endTime === 'number' &&
-            clip.endTime > clip.startTime
-        )
-        .map(clip => ({
-            startTime: Math.round(clip.startTime),
-            endTime: Math.round(clip.endTime),
-            duration: Math.round(clip.endTime - clip.startTime),
-            viralityScore: Math.min(100, Math.max(0, clip.viralityScore || 75)),
-            hookType: clip.hookType || 'insight',
-            reason: clip.reason || 'Viral potential detected',
-            suggestedCaption: clip.suggestedCaption || '🔥 Must watch!',
-            transcript: clip.transcript || '',
-            visualHighlight: clip.visualHighlight || ''
-        }))
-        .sort((a, b) => b.viralityScore - a.viralityScore);
-
-    console.log(`[GeminiVideo] Returning ${validClips.length} validated clips`);
-
-    // Clean up uploaded file (optional - Gemini auto-deletes after 48hrs)
-    try {
-        await fileManager.deleteFile(uploadedFile.name);
-        console.log('[GeminiVideo] Cleaned up uploaded file');
-    } catch (err) {
-        console.log('[GeminiVideo] Note: Could not delete uploaded file:', err.message);
-    }
-
-    return validClips;
-}
-
-/**
- * Get MIME type from file extension
- */
-function getMimeType(filePath) {
-    const ext = path.extname(filePath).toLowerCase();
+    // Determine MIME type from extension
+    const ext = path.extname(videoPath).toLowerCase();
     const mimeTypes = {
+        '.webm': 'video/webm',
         '.mp4': 'video/mp4',
         '.mov': 'video/quicktime',
-        '.avi': 'video/x-msvideo',
-        '.webm': 'video/webm',
-        '.mkv': 'video/x-matroska',
-        '.m4v': 'video/x-m4v'
+        '.avi': 'video/x-msvideo'
     };
-    return mimeTypes[ext] || 'video/mp4';
+    const mimeType = mimeTypes[ext] || 'video/webm';
+
+    console.log(`[GEMINI] Analyzing video: ${path.basename(videoPath)} (${mimeType})`);
+    console.log(`[GEMINI] Video size: ${(videoBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+
+    // Create the prompt for detailed video analysis
+    const prompt = `You are analyzing a screen recording. Your task is to create a comprehensive, detailed transcript that captures EVERYTHING happening in the video.
+
+For each moment in the video, describe:
+1. **Spoken Words**: Transcribe exactly what the person says, word for word
+2. **Visual Actions**: Describe every mouse movement, click, scroll, and keyboard action
+3. **Screen Content**: Describe what is visible on screen, including:
+   - Window titles and application names
+   - Button labels, menu items, and text visible
+   - Any changes in the UI when something is clicked
+   - Error messages or notifications that appear
+
+Format your response as a timeline transcript like this:
+
+[00:00] *Screen shows [describe initial screen state]*
+[00:02] "Hello, I'm going to show you..." *Mouse moves to the top menu bar*
+[00:05] *Clicks on "File" menu* The dropdown opens showing options: New, Open, Save...
+[00:08] "First, we click on Settings..." *Cursor moves down to "Settings", clicks*
+[00:10] *Settings window opens, showing tabs for General, Appearance, Advanced*
+
+Continue this format for the ENTIRE video. Be EXTREMELY detailed and descriptive. 
+Every mouse movement, every click, every word spoken should be captured.
+Use *asterisks* for visual descriptions and "quotes" for spoken words.
+
+If there is no audio or the person doesn't speak, focus entirely on the visual descriptions.
+
+At the end, provide a brief 2-3 sentence summary of what the recording demonstrates.`;
+
+    try {
+        const result = await model.generateContent([
+            {
+                inlineData: {
+                    mimeType: mimeType,
+                    data: videoBase64
+                }
+            },
+            { text: prompt }
+        ]);
+
+        const response = await result.response;
+        const text = response.text();
+
+        console.log(`[GEMINI] Analysis complete. Transcript length: ${text.length} chars`);
+
+        // Extract summary from the end if present
+        const summaryMatch = text.match(/(?:Summary|In summary|This recording)[:.]?\s*(.+)$/is);
+        const summary = summaryMatch ? summaryMatch[1].trim() : '';
+
+        return {
+            transcript: text,
+            summary: summary || 'Screen recording analyzed successfully.',
+            model: 'gemini-2.0-flash',
+            analyzedAt: new Date().toISOString()
+        };
+    } catch (error) {
+        console.error('[GEMINI] Video analysis error:', error);
+
+        // Check for specific error types
+        if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('Invalid API key')) {
+            throw new Error('Invalid Gemini API key. Please check your key in Settings.');
+        }
+
+        if (error.message?.includes('RESOURCE_EXHAUSTED') || error.message?.includes('quota')) {
+            throw new Error('Gemini API quota exceeded. Please wait or upgrade your plan.');
+        }
+
+        if (error.message?.includes('too large') || error.message?.includes('size')) {
+            throw new Error('Video file too large for Gemini. Try a shorter recording (under 2 minutes).');
+        }
+
+        throw new Error(`Video analysis failed: ${error.message}`);
+    }
 }
 
 /**
- * Check if Gemini API is available
+ * Analyze video from a Buffer (for uploaded files)
+ * @param {Buffer} videoBuffer - Video file buffer
+ * @param {string} mimeType - MIME type of the video
+ * @param {string} apiKey - Gemini API key
  */
-function isGeminiAvailable() {
-    return !!getApiKey();
+async function analyzeVideoBuffer(videoBuffer, mimeType, apiKey) {
+    if (!apiKey) {
+        throw new Error('Gemini API key is required for video analysis');
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+    const videoBase64 = videoBuffer.toString('base64');
+
+    console.log(`[GEMINI] Analyzing video buffer (${mimeType})`);
+    console.log(`[GEMINI] Video size: ${(videoBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+
+    const prompt = `You are analyzing a screen recording. Your task is to create a comprehensive, detailed transcript that captures EVERYTHING happening in the video.
+
+For each moment in the video, describe:
+1. **Spoken Words**: Transcribe exactly what the person says, word for word
+2. **Visual Actions**: Describe every mouse movement, click, scroll, and keyboard action
+3. **Screen Content**: Describe what is visible on screen, including:
+   - Window titles and application names
+   - Button labels, menu items, and text visible
+   - Any changes in the UI when something is clicked
+   - Error messages or notifications that appear
+
+Format your response as a timeline transcript like this:
+
+[00:00] *Screen shows [describe initial screen state]*
+[00:02] "Hello, I'm going to show you..." *Mouse moves to the top menu bar*
+[00:05] *Clicks on "File" menu* The dropdown opens showing options: New, Open, Save...
+[00:08] "First, we click on Settings..." *Cursor moves down to "Settings", clicks*
+[00:10] *Settings window opens, showing tabs for General, Appearance, Advanced*
+
+Continue this format for the ENTIRE video. Be EXTREMELY detailed and descriptive. 
+Every mouse movement, every click, every word spoken should be captured.
+Use *asterisks* for visual descriptions and "quotes" for spoken words.
+
+If there is no audio or the person doesn't speak, focus entirely on the visual descriptions.
+
+At the end, provide a brief 2-3 sentence summary of what the recording demonstrates.`;
+
+    try {
+        const result = await model.generateContent([
+            {
+                inlineData: {
+                    mimeType: mimeType || 'video/webm',
+                    data: videoBase64
+                }
+            },
+            { text: prompt }
+        ]);
+
+        const response = await result.response;
+        const text = response.text();
+
+        console.log(`[GEMINI] Analysis complete. Transcript length: ${text.length} chars`);
+
+        const summaryMatch = text.match(/(?:Summary|In summary|This recording)[:.]?\s*(.+)$/is);
+        const summary = summaryMatch ? summaryMatch[1].trim() : '';
+
+        return {
+            transcript: text,
+            summary: summary || 'Screen recording analyzed successfully.',
+            model: 'gemini-2.0-flash',
+            analyzedAt: new Date().toISOString()
+        };
+    } catch (error) {
+        console.error('[GEMINI] Video analysis error:', error);
+
+        if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('Invalid API key')) {
+            throw new Error('Invalid Gemini API key. Please check your key in Settings.');
+        }
+
+        if (error.message?.includes('RESOURCE_EXHAUSTED') || error.message?.includes('quota')) {
+            throw new Error('Gemini API quota exceeded. Please wait or upgrade your plan.');
+        }
+
+        if (error.message?.includes('too large') || error.message?.includes('size')) {
+            throw new Error('Video file too large for Gemini. Try a shorter recording (under 2 minutes).');
+        }
+
+        throw new Error(`Video analysis failed: ${error.message}`);
+    }
 }
 
 module.exports = {
-    analyzeVideoForClips,
-    uploadVideoToGemini,
-    isGeminiAvailable,
-    VIRAL_DETECTION_PROMPT
+    getGeminiApiKey,
+    analyzeVideo,
+    analyzeVideoBuffer
 };
