@@ -131,20 +131,10 @@ function checkForUpdates(isManual = false) {
     return;
   }
 
-  console.log('[UPDATER] Checking for updates...');
+  console.log('[UPDATER] Checking for updates... (manual:', isManual, ')');
 
-  // For manual checks, show a dialog with the result
+  // For manual checks, add one-time handlers with dialog feedback
   if (isManual) {
-    // Show checking dialog
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Checking for Updates',
-      message: 'Checking for updates...',
-      detail: 'Please wait while we check for new versions.',
-      buttons: ['OK']
-    });
-
-    // Temporarily add handlers for manual check feedback
     const onUpdateAvailable = (info) => {
       dialog.showMessageBox(mainWindow, {
         type: 'info',
@@ -188,8 +178,18 @@ function checkForUpdates(isManual = false) {
     }, 30000);
   }
 
+  // Actually check for updates
   autoUpdater.checkForUpdates().catch(err => {
     console.error('[UPDATER] Check failed:', err.message);
+    if (isManual && mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Update Check Failed',
+        message: 'Could not check for updates.',
+        detail: err.message,
+        buttons: ['OK']
+      });
+    }
   });
 }
 
