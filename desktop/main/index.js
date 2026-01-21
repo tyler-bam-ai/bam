@@ -103,6 +103,29 @@ function setupAutoUpdater() {
 
   autoUpdater.on('error', (err) => {
     console.error('[UPDATER] Error:', err.message);
+
+    // Check for Mac code signing error - offer manual download
+    if (err.message?.includes('Code signature') ||
+      err.message?.includes('did not pass validation') ||
+      err.message?.includes('signature indicates')) {
+      console.log('[UPDATER] Code signing error - offering manual download');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Update Available',
+          message: 'A new version is available!',
+          detail: 'Automatic updates require code signing. Would you like to download the update manually from our releases page?',
+          buttons: ['Download Update', 'Later'],
+          defaultId: 0
+        }).then(result => {
+          if (result.response === 0) {
+            require('electron').shell.openExternal('https://github.com/tyler-bam-ai/bam/releases/latest');
+          }
+        });
+      }
+      return;
+    }
+
     // Suppress expected errors silently
     if (err.message?.includes('ENOENT') ||
       err.message?.includes('no such file') ||
