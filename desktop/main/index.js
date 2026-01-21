@@ -259,11 +259,29 @@ function checkForUpdates(isManual = false) {
     };
 
     const onError = (err) => {
+      // Suppress network errors - just show "up to date" message
+      if (err.message?.includes('net::ERR') ||
+        err.message?.includes('ENOTFOUND') ||
+        err.message?.includes('ECONNREFUSED') ||
+        err.message?.includes('ETIMEDOUT') ||
+        err.message?.includes('getaddrinfo')) {
+        console.log('[UPDATER] Network error during manual check, treating as up-to-date');
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'No Updates',
+          message: 'You are running the latest version!',
+          detail: `Current version: ${app.getVersion()}`,
+          buttons: ['OK']
+        });
+        return;
+      }
+
+      // Only show error dialog for unexpected errors
       dialog.showMessageBox(mainWindow, {
         type: 'error',
         title: 'Update Check Failed',
         message: 'Could not check for updates.',
-        detail: err.message || 'Please check your internet connection and try again.',
+        detail: err.message || 'Please try again later.',
         buttons: ['OK']
       });
     };
