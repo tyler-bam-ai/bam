@@ -159,13 +159,30 @@ function checkForUpdates(isManual = false) {
   // For manual checks, add one-time handlers with dialog feedback
   if (isManual) {
     const onUpdateAvailable = (info) => {
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Update Available',
-        message: `Version ${info.version} is available!`,
-        detail: 'The update is downloading in the background. You will be notified when it\'s ready.',
-        buttons: ['OK']
-      });
+      // On Mac, auto-update requires code signing, so offer manual download
+      if (process.platform === 'darwin') {
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Update Available',
+          message: `Version ${info.version} is available!`,
+          detail: 'Click "Download Update" to get the latest version from our releases page.',
+          buttons: ['Download Update', 'Later'],
+          defaultId: 0
+        }).then(result => {
+          if (result.response === 0) {
+            require('electron').shell.openExternal('https://github.com/tyler-bam-ai/bam/releases/latest');
+          }
+        });
+      } else {
+        // Windows - auto-update works
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'Update Available',
+          message: `Version ${info.version} is available!`,
+          detail: 'The update is downloading in the background. You will be notified when it\'s ready.',
+          buttons: ['OK']
+        });
+      }
     };
 
     const onUpdateNotAvailable = () => {
