@@ -565,8 +565,8 @@ function startBackendServer() {
           // Only show warning if we don't see successful initialization
           const dbInitialized = startupOutput.includes('Database initialized successfully') ||
             startupOutput.includes('Database schema initialized');
-          if (!dbInitialized) {
-            // Show dialog with startup output for debugging
+          if (!dbInitialized && !app.isPackaged) {
+            // Only show dialog in development - packaged apps use Railway backend
             dialog.showMessageBox({
               type: 'warning',
               title: 'Backend Warning',
