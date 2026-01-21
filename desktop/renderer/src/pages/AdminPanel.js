@@ -371,28 +371,73 @@ function AdminPanel() {
         navigate('/consumer');
     };
 
-    const handleSaveClient = () => {
-        if (editMode && selectedClient) {
-            setClients(prev => prev.map(c =>
-                c.id === selectedClient.id ? { ...c, ...clientForm } : c
-            ));
-        } else {
-            const newClient = {
-                id: Date.now().toString(),
-                ...clientForm,
-                status: 'onboarding',
-                knowledgeScore: 0,
-                users: 1,
-                knowledgeItems: 0,
-                monthlyQuestions: 0,
-                satisfaction: null,
-                lastActive: 'Just now',
-                apiKeys: { openrouter: { enabled: false }, elevenlabs: { enabled: false } },
-                createdAt: new Date().toISOString()
-            };
-            setClients(prev => [newClient, ...prev]);
+    const handleSaveClient = async () => {
+        const token = localStorage.getItem('bam_token');
+        try {
+            if (editMode && selectedClient) {
+                // UPDATE existing client via API
+                const response = await fetch(`${API_URL}/api/clients/${selectedClient.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(clientForm)
+                });
+
+                if (response.ok) {
+                    const updatedClient = await response.json();
+                    setClients(prev => prev.map(c =>
+                        c.id === selectedClient.id ? { ...c, ...updatedClient } : c
+                    ));
+                    console.log('[ADMIN] Client updated on Railway:', selectedClient.id);
+                } else {
+                    const error = await response.json();
+                    alert('Failed to update client: ' + (error.error || 'Unknown error'));
+                    return;
+                }
+            } else {
+                // CREATE new client via API - this persists to Railway PostgreSQL
+                console.log('[ADMIN] Creating client on Railway:', clientForm);
+                const response = await fetch(`${API_URL}/api/clients`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        companyName: clientForm.companyName,
+                        industry: clientForm.industry,
+                        contactEmail: clientForm.contactEmail,
+                        contactName: clientForm.contactName,
+                        companyAddress: clientForm.companyAddress,
+                        plan: clientForm.plan,
+                        seatCount: clientForm.seatCount,
+                        status: 'onboarding'
+                    })
+                });
+
+                if (response.ok) {
+                    const newClient = await response.json();
+                    console.log('[ADMIN] Client created on Railway:', newClient);
+                    // Add to local state with full client object
+                    setClients(prev => [{
+                        ...newClient,
+                        knowledgeScore: 0,
+                        monthlyQuestions: 0,
+                        apiKeys: { openrouter: { enabled: false }, elevenlabs: { enabled: false } }
+                    }, ...prev]);
+                } else {
+                    const error = await response.json();
+                    alert('Failed to create client: ' + (error.error || 'Unknown error'));
+                    return;
+                }
+            }
+            closeClientModal();
+        } catch (error) {
+            console.error('[ADMIN] Save client error:', error);
+            alert('Failed to save client: ' + error.message);
         }
-        closeClientModal();
     };
 
     const handleDeleteClient = async (clientId) => {
