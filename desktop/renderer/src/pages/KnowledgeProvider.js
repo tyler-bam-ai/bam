@@ -185,23 +185,7 @@ function ScreenRecorder() {
                 console.log('Recording saved to:', filePath);
             }
 
-            // Get Gemini API key for video analysis
-            let geminiKey = localStorage.getItem('google_api_key');
-            if (!geminiKey && window.electronAPI?.apiKeys?.get) {
-                try {
-                    geminiKey = await window.electronAPI.apiKeys.get('google');
-                } catch (e) {
-                    console.warn('[SCREEN RECORDING] Could not get Gemini key from electron-store:', e);
-                }
-            }
-
-            if (!geminiKey) {
-                alert('Gemini API key required for screen recording analysis.\n\nPlease add your key in Settings → API Keys.');
-                setRecordingTime(0);
-                return;
-            }
-
-            // Upload to backend with Gemini key for analysis
+            // Upload to backend
             try {
                 const token = localStorage.getItem('token');
                 const formData = new FormData();
@@ -209,47 +193,26 @@ function ScreenRecorder() {
                 formData.append('title', `Screen Recording - ${new Date().toLocaleString()}`);
                 formData.append('duration', recordingTime.toString());
                 formData.append('source', selectedSource?.name || 'Screen');
-                // Get client ID
-                const clientId = localStorage.getItem('selectedClientId') || 'demo';
-                formData.append('clientId', clientId);
-
-                // Show analyzing status
-                alert('Uploading and analyzing video with Gemini AI...\n\nThis may take a minute for longer recordings.');
 
                 const response = await fetch(`${API_URL}/api/knowledge/video`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'X-Gemini-Key': geminiKey
-                    },
+                    headers: { 'Authorization': `Bearer ${token}` },
                     body: formData
                 });
 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('Recording uploaded and analyzed:', data);
-                    alert(`✅ Screen recording analyzed!\n\n${data.item?.wordCount || 0} words transcribed.\n\nThe transcript has been saved to your knowledge base.`);
+                    console.log('Recording uploaded to backend:', data.id);
                 } else {
-                    const errorData = await response.json().catch(() => ({}));
-                    console.error('Failed to upload recording:', errorData);
-
-                    if (errorData.code === 'GEMINI_KEY_MISSING') {
-                        alert('Gemini API key required for screen recording analysis.\n\nPlease add your key in Settings → API Keys.');
-                    } else if (errorData.code === 'GEMINI_ANALYSIS_FAILED') {
-                        alert(`Video analysis failed:\n\n${errorData.message}\n\nPlease try a shorter recording.`);
-                    } else {
-                        alert(`Failed to upload recording:\n\n${errorData.error || errorData.message || 'Unknown error'}`);
-                    }
+                    console.error('Failed to upload recording to backend');
                 }
             } catch (uploadError) {
                 console.error('Backend upload error:', uploadError);
-                alert(`Upload error: ${uploadError.message}`);
             }
 
             setRecordingTime(0);
         } catch (error) {
             console.error('Error saving recording:', error);
-            alert(`Error: ${error.message}`);
         }
     }
 
@@ -1063,21 +1026,9 @@ function TextInput({ isDemoMode }) {
     const effectiveClientId = selectedClient?.id || user?.companyId || 'default';
 
     const handleSave = async () => {
-        if (!content.trim()) {
-            alert('Please enter some content.');
+        if (!title.trim() || !content.trim()) {
+            alert('Please enter both a title and content.');
             return;
-        }
-
-        // Auto-generate title from first 50 chars if not provided
-        let finalTitle = title.trim();
-        if (!finalTitle) {
-            const words = content.trim().split(/\s+/);
-            finalTitle = words.slice(0, 8).join(' ');
-            if (finalTitle.length > 50) {
-                finalTitle = finalTitle.substring(0, 47) + '...';
-            } else if (words.length > 8) {
-                finalTitle += '...';
-            }
         }
 
         setIsSaving(true);
@@ -1092,7 +1043,7 @@ function TextInput({ isDemoMode }) {
                 body: JSON.stringify({
                     clientId: effectiveClientId,
                     type: 'text_note',
-                    title: finalTitle,
+                    title: title.trim(),
                     content: content.trim(),
                     wordCount: content.trim().split(/\s+/).filter(w => w).length
                 })
