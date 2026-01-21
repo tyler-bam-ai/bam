@@ -93,13 +93,30 @@ function setupAutoUpdater() {
         version: info.version
       });
     }
-    // Auto-install on app quit is enabled, so it will install on next restart
-    // Optionally show a subtle notification to let user know
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('show-toast', {
-        type: 'success',
-        message: `Update v${info.version} ready! It will install on restart.`
+
+    // Show native dialog with restart option (Windows)
+    if (process.platform !== 'darwin') {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Ready',
+        message: `Version ${info.version} has been downloaded!`,
+        detail: 'Would you like to restart the app now to install the update?',
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0
+      }).then(result => {
+        if (result.response === 0) {
+          // Quit and install
+          autoUpdater.quitAndInstall(false, true);
+        }
       });
+    } else {
+      // Mac toast (although Mac won't auto-download)
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('show-toast', {
+          type: 'success',
+          message: `Update v${info.version} ready! It will install on restart.`
+        });
+      }
     }
   });
 
