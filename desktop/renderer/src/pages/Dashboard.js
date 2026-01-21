@@ -199,7 +199,7 @@ function Dashboard() {
                 {isConsumer() && !isProvider() && (
                     <Link to="/consumer" className="btn btn-primary btn-lg">
                         <MessageSquare size={20} />
-                        Ask AI
+                        BAM Brains
                     </Link>
                 )}
             </section>

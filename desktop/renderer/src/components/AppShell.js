@@ -29,7 +29,8 @@ import {
     Lock,
     Database,
     Sun,
-    Moon
+    Moon,
+    Shield
 } from 'lucide-react';
 import './AppShell.css';
 
@@ -63,16 +64,20 @@ const NAV_ITEMS = {
     ],
     knowledge_provider: [
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+        { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
         { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
         { path: '/my-knowledge', icon: User, label: 'My Knowledge', requiresClient: true },
         { path: '/library', icon: Users, label: 'Library', requiresClient: true },
+        { path: '/vault', icon: Shield, label: 'Vault', requiresClient: true },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ],
     knowledge_consumer: [
         { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { path: '/consumer', icon: MessageSquare, label: 'Ask AI', requiresClient: true },
+        { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
+        { path: '/provider', icon: Upload, label: 'Brain Training', requiresClient: true },
         { path: '/my-knowledge', icon: User, label: 'My Knowledge', requiresClient: true },
         { path: '/library', icon: Users, label: 'Library', requiresClient: true },
+        { path: '/vault', icon: Shield, label: 'Vault', requiresClient: true },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ]
 };

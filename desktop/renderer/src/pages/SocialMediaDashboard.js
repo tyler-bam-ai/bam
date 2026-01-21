@@ -63,6 +63,7 @@ import {
     Edit2
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
+import { API_URL } from '../config';
 import './SocialMediaDashboard.css';
 
 // ============================================
@@ -339,7 +340,7 @@ function SocialMediaDashboard({ embedded = false }) {
 
             // Fetch accounts
             try {
-                const accountsRes = await fetch('http://localhost:3001/api/social/accounts', { headers });
+                const accountsRes = await fetch(`${API_URL}/api/social/accounts`, { headers });
                 if (accountsRes.ok) {
                     const data = await accountsRes.json();
                     setAccounts(data.accounts?.length > 0 ? data.accounts : (isDemoMode ? DEMO_ACCOUNTS : []));
@@ -352,7 +353,7 @@ function SocialMediaDashboard({ embedded = false }) {
 
             // Fetch inbox messages
             try {
-                const inboxRes = await fetch('http://localhost:3001/api/social/inbox', { headers });
+                const inboxRes = await fetch(`${API_URL}/api/social/inbox`, { headers });
                 if (inboxRes.ok) {
                     const data = await inboxRes.json();
                     setInboxMessages(data.messages?.length > 0 ? data.messages : (isDemoMode ? DEMO_INBOX_MESSAGES : []));
@@ -365,7 +366,7 @@ function SocialMediaDashboard({ embedded = false }) {
 
             // Fetch scheduled posts
             try {
-                const postsRes = await fetch('http://localhost:3001/api/social/posts', { headers });
+                const postsRes = await fetch(`${API_URL}/api/social/posts`, { headers });
                 if (postsRes.ok) {
                     const data = await postsRes.json();
                     setScheduledPosts(data.posts?.length > 0 ? data.posts : (isDemoMode ? DEMO_SCHEDULED_POSTS : []));
@@ -378,7 +379,7 @@ function SocialMediaDashboard({ embedded = false }) {
 
             // Fetch analytics
             try {
-                const analyticsRes = await fetch('http://localhost:3001/api/social/analytics', { headers });
+                const analyticsRes = await fetch(`${API_URL}/api/social/analytics`, { headers });
                 if (analyticsRes.ok) {
                     const data = await analyticsRes.json();
                     setAnalytics(data.analytics || (isDemoMode ? DEMO_ANALYTICS : null));

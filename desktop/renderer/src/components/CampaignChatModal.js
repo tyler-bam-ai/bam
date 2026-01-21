@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import './CampaignChatModal.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+import { API_URL } from '../config';
 
 function CampaignChatModal({ isOpen, onClose, onCampaignCreated }) {
     const [messages, setMessages] = useState([]);
