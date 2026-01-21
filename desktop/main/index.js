@@ -19,8 +19,8 @@ try {
     console.log('[MAIN] electron-log not available, using console');
   }
 
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = true;  // Automatically download updates
+  autoUpdater.autoInstallOnAppQuit = true;  // Install on app quit
 } catch (err) {
   console.log('[MAIN] Auto-updater not available:', err.message);
 }
@@ -53,69 +53,67 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-available', (info) => {
     console.log('[UPDATER] Update available:', info.version);
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Available',
-      message: `A new version (${info.version}) is available!`,
-      detail: 'Would you like to download and install it now?',
-      buttons: ['Download Now', 'Later'],
-      defaultId: 0
-    }).then(result => {
-      if (result.response === 0) {
-        autoUpdater.downloadUpdate();
-      }
-    });
-  });
-
-  autoUpdater.on('update-not-available', () => {
-    console.log('[UPDATER] No updates available');
-    // Just log - no popup needed when already on latest version
-  });
-
-  autoUpdater.on('download-progress', (progress) => {
-    console.log(`[UPDATER] Download progress: ${Math.round(progress.percent)}%`);
+    // Notify UI that update is downloading
     if (mainWindow) {
       mainWindow.webContents.send('update-status', {
         status: 'downloading',
-        percent: Math.round(progress.percent)
+        version: info.version,
+        percent: 0
+      });
+    }
+    // Auto-download is enabled, so download starts automatically
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[UPDATER] App is up to date');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', { status: 'up-to-date' });
+    }
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    const percent = Math.round(progress.percent);
+    console.log(`[UPDATER] Download progress: ${percent}%`);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', {
+        status: 'downloading',
+        percent: percent
       });
     }
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[UPDATER] Update downloaded:', info.version);
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'Update downloaded successfully!',
-      detail: 'The app will restart to install the update.',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0
-    }).then(result => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall();
-      }
-    });
+    console.log('[UPDATER] Update will be installed on next restart');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', {
+        status: 'ready',
+        version: info.version
+      });
+    }
+    // Auto-install on app quit is enabled, so it will install on next restart
+    // Optionally show a subtle notification to let user know
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('show-toast', {
+        type: 'success',
+        message: `Update v${info.version} ready! It will install on restart.`
+      });
+    }
   });
 
   autoUpdater.on('error', (err) => {
-    console.error('[UPDATER] Error:', err);
-    // Don't show error dialog for common expected failures:
-    // - ENOENT: app-update.yml not found (running from copied location)
-    // - No published versions: first run or unpublished repo
+    console.error('[UPDATER] Error:', err.message);
+    // Suppress expected errors silently
     if (err.message?.includes('ENOENT') ||
       err.message?.includes('no such file') ||
-      err.message?.includes('No published versions')) {
-      console.log('[UPDATER] Suppressing expected error dialog');
+      err.message?.includes('No published versions') ||
+      err.message?.includes('net::ERR') ||
+      err.message?.includes('ENOTFOUND')) {
+      console.log('[UPDATER] Suppressing expected error (offline or first run)');
       return;
     }
-    dialog.showMessageBox(mainWindow, {
-      type: 'error',
-      title: 'Update Error',
-      message: 'Failed to check for updates',
-      detail: err.message,
-      buttons: ['OK']
-    });
+    // Only log unexpected errors, don't show dialogs
+    console.error('[UPDATER] Unexpected error during update check');
   });
 }
 
