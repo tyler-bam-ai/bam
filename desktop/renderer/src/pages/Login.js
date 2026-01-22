@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Mail, Lock, ArrowRight, Eye, EyeOff, User, Building } from 'lucide-react';
@@ -10,6 +10,9 @@ function Login() {
     const { user, login, register, loading, error } = useAuth();
     const navigate = useNavigate();
 
+    // Ref for email input to force focus on mount (fixes Windows/Electron focus bug)
+    const emailInputRef = useRef(null);
+
     const [mode, setMode] = useState('signin'); // 'signin' or 'signup'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -19,6 +22,22 @@ function Login() {
     const [localError, setLocalError] = useState('');
     const [showTokenInput, setShowTokenInput] = useState(false);
     const [tokenInput, setTokenInput] = useState('');
+
+    // Force focus on email input on mount to fix Windows/Electron focus issue
+    useEffect(() => {
+        // Use multiple delayed focus attempts to ensure window is ready
+        const attemptFocus = (attempt = 0) => {
+            if (emailInputRef.current && attempt < 3) {
+                emailInputRef.current.focus();
+                // Verify focus was actually set
+                if (document.activeElement !== emailInputRef.current) {
+                    setTimeout(() => attemptFocus(attempt + 1), 100);
+                }
+            }
+        };
+        // Initial delay to let the page fully render
+        setTimeout(attemptFocus, 50);
+    }, []);
 
     // Redirect if already logged in
     if (user) {
@@ -198,12 +217,12 @@ function Login() {
                             <input
                                 id="email"
                                 type="email"
+                                ref={emailInputRef}
                                 className={`input ${localError || error ? 'input-error' : ''}`}
                                 placeholder="you@company.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 autoComplete="email"
-                                autoFocus={mode === 'signin'}
                             />
                         </div>
                     </div>

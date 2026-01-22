@@ -573,7 +573,7 @@ function BrainChat({ brainId }) {
         }
 
         const userMessage = {
-            id: Date.now(),
+            id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             role: 'user',
             content: input.trim(),
             timestamp: new Date().toISOString()
@@ -602,7 +602,8 @@ function BrainChat({ brainId }) {
             }
 
             // Create placeholder assistant message for streaming
-            const assistantMessageId = Date.now();
+            // Use unique ID prefix to prevent collision with user message ID
+            const assistantMessageId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const assistantMessage = {
                 id: assistantMessageId,
                 role: 'assistant',
