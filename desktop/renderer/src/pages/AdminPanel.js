@@ -189,40 +189,55 @@ function AdminPanel() {
     });
 
     // Load data based on demo mode - always fetch from Railway when not demo
-    useEffect(() => {
+    // Also refetch when window regains focus to ensure data persistence
+    const fetchClients = async () => {
         if (isDemoMode) {
             setClients(DEMO_CLIENTS);
             setActivity(DEMO_ACTIVITY);
             setLoading(false);
-        } else {
-            // Clear clients first to avoid stale data
-            setClients([]);
-            // Fetch real clients from Railway API
-            const fetchClients = async () => {
-                setLoading(true);
-                try {
-                    console.log('[ADMIN] Fetching clients from:', `${API_URL}/api/clients`);
-                    const response = await fetch(`${API_URL}/api/clients`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        console.log('[ADMIN] Received clients data:', data);
-                        // Handle both { clients: [] } and direct array format
-                        const clientsList = Array.isArray(data) ? data : (data.clients || []);
-                        setClients(clientsList);
-                        console.log('[ADMIN] Set clients:', clientsList.length);
-                    } else {
-                        console.error('[ADMIN] Failed to fetch clients:', response.status);
-                        setClients([]);
-                    }
-                } catch (error) {
-                    console.error('[ADMIN] Error fetching clients:', error);
-                    setClients([]);
-                }
-                setActivity([]); // No activity tracking yet
-                setLoading(false);
-            };
-            fetchClients();
+            return;
         }
+
+        setLoading(true);
+        try {
+            console.log('[ADMIN] Fetching clients from:', `${API_URL}/api/clients`);
+            const response = await fetch(`${API_URL}/api/clients`);
+            if (response.ok) {
+                const data = await response.json();
+                console.log('[ADMIN] Received clients data:', data);
+                // Handle both { clients: [] } and direct array format
+                const clientsList = Array.isArray(data) ? data : (data.clients || []);
+                // Filter out any malformed clients (missing companyName)
+                const validClients = clientsList.filter(c => c && c.companyName);
+                setClients(validClients);
+                console.log('[ADMIN] Set valid clients:', validClients.length);
+            } else {
+                console.error('[ADMIN] Failed to fetch clients:', response.status);
+                // Don't clear clients on error - keep existing
+            }
+        } catch (error) {
+            console.error('[ADMIN] Error fetching clients:', error);
+            // Don't clear clients on error - keep existing
+        }
+        setActivity([]); // No activity tracking yet
+        setLoading(false);
+    };
+
+    // Fetch on mount and when demo mode changes
+    useEffect(() => {
+        fetchClients();
+    }, [isDemoMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Refetch when page becomes visible (user returns to app)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && !isDemoMode) {
+                console.log('[ADMIN] Page visible, refetching clients...');
+                fetchClients();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [isDemoMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Calculate stats
@@ -262,12 +277,16 @@ function AdminPanel() {
         { label: 'Avg. Satisfaction', value: '0%', change: '—', positive: true, icon: Activity },
     ];
 
-    // Filter clients
-    const filteredClients = clients.filter(client =>
-        client.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        client.industry?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        client.contactEmail?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Filter clients - with null safety for all fields
+    const filteredClients = clients.filter(client => {
+        if (!client || !client.companyName) return false; // Skip malformed entries
+        const query = searchQuery.toLowerCase();
+        return (
+            client.companyName.toLowerCase().includes(query) ||
+            (client.industry && client.industry.toLowerCase().includes(query)) ||
+            (client.contactEmail && client.contactEmail.toLowerCase().includes(query))
+        );
+    });
 
     // Modal handlers
     const openCreateModal = () => {
