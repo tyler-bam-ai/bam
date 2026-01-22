@@ -523,26 +523,18 @@ function startBackendServer() {
       });
 
       backendProcess.on('error', (err) => {
-        console.error('[BACKEND] Spawn error:', err);
-        dialog.showErrorBox('Backend Failed to Start',
-          `Could not start the backend server:\n\n${err.message}\n\nPath: ${backendPath}`
-        );
-        reject(err);
+        console.error('[BACKEND] Spawn error (non-fatal, using Railway API):', err);
+        // Don't show error dialog - frontend uses Railway API
+        resolve(true); // Resolve anyway, Railway API will handle requests
       });
 
       backendProcess.on('exit', (code, signal) => {
         console.log('[BACKEND] Process exited with code:', code, 'signal:', signal);
         if (code !== 0 && code !== null) {
-          console.error('[BACKEND] Startup output:', startupOutput);
-          if (!hasError) {
-            dialog.showMessageBox({
-              type: 'error',
-              title: 'Backend Crashed',
-              message: `Backend server exited with code: ${code}`,
-              detail: startupOutput.slice(-500), // Last 500 chars
-              buttons: ['OK']
-            });
-          }
+          console.error('[BACKEND] Local backend exited unexpectedly, startup output:', startupOutput);
+          // Don't show error dialog - frontend uses Railway API directly
+          // The local backend is optional for packaged apps
+          console.log('[BACKEND] App will continue using Railway API for data');
         }
         backendProcess = null;
       });
