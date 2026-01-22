@@ -477,10 +477,16 @@ function startBackendServer() {
     const { spawn } = require('child_process');
 
     try {
+      // CRITICAL: Use Railway PostgreSQL for ALL data persistence
+      // Without this, users/clients are stored in local SQLite and LOST when app updates
+      const RAILWAY_DATABASE_URL = 'postgresql://postgres:YQPwJHBULOmoCANHnCCexmMjSlAGbAhW@junction.proxy.rlwy.net:26367/railway';
+
       const env = {
         ...process.env,
         NODE_ENV: 'production',
-        PORT: '3001'
+        PORT: '3001',
+        // Use Railway PostgreSQL so all data is persisted centrally
+        DATABASE_URL: RAILWAY_DATABASE_URL
       };
 
       // In packaged apps, use ELECTRON_RUN_AS_NODE to run Electron as Node
@@ -488,6 +494,7 @@ function startBackendServer() {
         env.ELECTRON_RUN_AS_NODE = '1';
       }
 
+      console.log('[BACKEND] Using Railway PostgreSQL for data persistence');
       console.log('[BACKEND] Spawning with ELECTRON_RUN_AS_NODE:', env.ELECTRON_RUN_AS_NODE);
 
       backendProcess = spawn(process.execPath, [backendPath], {
