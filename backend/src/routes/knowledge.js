@@ -434,10 +434,11 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
         const { clientId } = req.params;
 
         // Use only base columns that definitely exist in all environments
+        // Filter out deleted items (status = 'ready' means active)
         const items = await db.prepare(`
             SELECT id, type, title, content, status, metadata, created_at
             FROM knowledge_items 
-            WHERE company_id = ?
+            WHERE company_id = ? AND status = 'ready'
             ORDER BY created_at DESC
         `).all(clientId);
 

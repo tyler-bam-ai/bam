@@ -129,6 +129,24 @@ function AppShell() {
         };
     }, []);
 
+    // CRITICAL: Force focus restoration on route changes (Windows Electron bug fix)
+    // This helps ensure input fields can receive keyboard input after navigation
+    useEffect(() => {
+        // Small delay to ensure DOM is ready
+        const timer = setTimeout(() => {
+            // Try to focus the first interactive element or body
+            const firstInput = document.querySelector('input:not([type="hidden"]), textarea, [contenteditable="true"]');
+            if (firstInput) {
+                firstInput.focus();
+            } else {
+                document.body.focus();
+            }
+            window.focus();
+        }, 150);
+
+        return () => clearTimeout(timer);
+    }, [location.pathname]);
+
     // Get nav items and filter based on admin mode
     const baseNavItems = NAV_ITEMS[user?.role] || NAV_ITEMS.knowledge_consumer;
     // When admin mode is OFF, hide Content Engine, Admin & Clients, and Onboarding

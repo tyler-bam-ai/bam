@@ -4,15 +4,20 @@
  * Global React context for the currently selected client.
  * Persists across tabs and allows admin users to simulate viewing
  * the app from a specific client's perspective.
+ * 
+ * For non-BAM users (client_admin, knowledge_provider, knowledge_consumer),
+ * automatically sets their company as the selected client.
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useAuth } from '../hooks/useAuth';
 
 const ClientContext = createContext(null);
 
 const STORAGE_KEY = 'bam_selected_client';
 
 export function ClientProvider({ children }) {
+    const { user, loading: authLoading } = useAuth();
     const [selectedClient, setSelectedClient] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -31,6 +36,26 @@ export function ClientProvider({ children }) {
         }
     }, []);
 
+    // AUTO-SELECT CLIENT FOR NON-BAM USERS
+    // Non-BAM users should always have their own company selected
+    // This enables all features (Brain, My Stuff, etc.) without admin configuration
+    useEffect(() => {
+        if (authLoading) return; // Wait for auth to load
+
+        if (user && user.role !== 'bam_admin') {
+            // Non-BAM user - auto-select their company
+            if (!selectedClient || selectedClient.id !== user.companyId) {
+                const autoClient = {
+                    id: user.companyId,
+                    companyName: user.companyName || 'My Company',
+                    // Add any other fields that might be needed
+                };
+                console.log('[ClientContext] Auto-selecting client for non-BAM user:', autoClient.companyName);
+                setSelectedClient(autoClient);
+            }
+        }
+    }, [user, authLoading, selectedClient]);
+
     // Persist selected client to localStorage
     useEffect(() => {
         if (selectedClient) {
@@ -47,7 +72,10 @@ export function ClientProvider({ children }) {
 
     const clearClient = () => {
         console.log('[ClientContext] Clearing selected client');
-        setSelectedClient(null);
+        // For non-BAM users, don't allow clearing - it will auto-reselect anyway
+        if (user?.role === 'bam_admin') {
+            setSelectedClient(null);
+        }
     };
 
     const value = {
@@ -55,7 +83,7 @@ export function ClientProvider({ children }) {
         selectClient,
         clearClient,
         isClientSelected: !!selectedClient,
-        isLoading
+        isLoading: isLoading || authLoading
     };
 
     return (
@@ -74,3 +102,4 @@ export function useClientContext() {
 }
 
 export default ClientContext;
+

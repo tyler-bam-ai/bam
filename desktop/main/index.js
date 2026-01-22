@@ -660,6 +660,19 @@ function createWindow() {
     const currentUrl = mainWindow.webContents.getURL();
     console.log('[NAV] Page finished loading:', currentUrl);
 
+    // CRITICAL: Force focus on Windows after page loads
+    // This fixes the bug where input boxes won't accept typing after navigation
+    if (process.platform === 'win32') {
+      // Delay slightly to ensure page is fully rendered
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.focus();
+          mainWindow.webContents.focus();
+          console.log('[NAV] Forced focus restoration for Windows');
+        }
+      }, 100);
+    }
+
     // Check if OAuth failed and redirected to login with error
     if (currentUrl.includes('login') && currentUrl.includes('error=')) {
       console.log('[NAV] *** OAUTH FAILED - Redirected to login with error ***');
