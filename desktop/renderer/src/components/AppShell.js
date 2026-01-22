@@ -48,7 +48,7 @@ const NAV_ITEMS = {
         { path: '/library', icon: Users, label: 'Library', requiresClient: true },
         { path: '/vault', icon: Lock, label: 'Vault', requiresClient: true },
         { path: '/consumer', icon: MessageSquare, label: 'BAM Brains', requiresClient: true },
-        { path: '/admin', icon: Building2, label: 'Admin & Clients' },
+        { path: '/admin', icon: Building2, label: 'Clients' },
         { path: '/onboarding', icon: ClipboardList, label: 'Onboarding' },
         { path: '/settings', icon: Settings, label: 'Settings' }
     ],

@@ -1,8 +1,7 @@
 /**
  * Theme Picker Component
  * 
- * Bottom-left UI with left/right arrows to cycle through 10 color themes
- * and a toggle for light/dark mode
+ * Minimal bottom-left UI with color swatch and arrows to cycle themes
  */
 
 import React from 'react';
@@ -15,36 +14,34 @@ function ThemePicker() {
 
     return (
         <div className="theme-picker">
-            <div className="theme-selector">
-                <button
-                    className="theme-arrow"
-                    onClick={prevTheme}
-                    title="Previous theme"
-                >
-                    <ChevronLeft size={16} />
-                </button>
-                <div
-                    className="theme-name"
-                    style={{
-                        borderBottom: `2px solid ${currentTheme.accent}`
-                    }}
-                >
-                    {currentTheme.name}
-                </div>
-                <button
-                    className="theme-arrow"
-                    onClick={nextTheme}
-                    title="Next theme"
-                >
-                    <ChevronRight size={16} />
-                </button>
-            </div>
+            <button
+                className="theme-arrow"
+                onClick={prevTheme}
+                title="Previous theme"
+            >
+                <ChevronLeft size={14} />
+            </button>
+
+            <div
+                className="theme-swatch"
+                style={{ background: currentTheme.accent }}
+                title={currentTheme.name}
+            />
+
+            <button
+                className="theme-arrow"
+                onClick={nextTheme}
+                title="Next theme"
+            >
+                <ChevronRight size={14} />
+            </button>
+
             <button
                 className="mode-toggle"
                 onClick={toggleMode}
-                title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                title={mode === 'dark' ? 'Light mode' : 'Dark mode'}
             >
-                {mode === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
+                {mode === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
             </button>
         </div>
     );
