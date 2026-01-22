@@ -81,7 +81,8 @@ function KnowledgeBase({ layer = 'personal' }) {
             subtitle: 'Your personal uploads that enhance your Brain',
             icon: User,
             canDelete: true,
-            canShare: true,  // Can share to library
+            canShare: true,   // Can share to library
+            canPromoteToVault: isAdmin,  // Admins can promote personal items to Vault
             canSave: false   // Already yours
         },
         library: {
@@ -99,7 +100,8 @@ function KnowledgeBase({ layer = 'personal' }) {
             icon: Lock,
             canDelete: isAdmin,
             canShare: false,
-            canSave: true      // Can copy to personal
+            canSave: true,      // Can copy to personal
+            canPromoteToVault: isAdmin  // Admins can promote to Vault
         },
         admin_vault: {
             title: 'Vault',
@@ -250,7 +252,8 @@ function KnowledgeBase({ layer = 'personal' }) {
             });
 
             if (response.ok) {
-                const layerName = targetLayer === 'vault' ? 'Knowledge Base' : 'My Stuff';
+                const layerName = targetLayer === 'vault' ? 'Knowledge Base' :
+                    targetLayer === 'admin_vault' ? 'Vault' : 'My Stuff';
                 alert(`Saved to ${layerName} successfully!`);
                 fetchItems(); // Refresh
             } else {
@@ -441,9 +444,14 @@ function KnowledgeBase({ layer = 'personal' }) {
                                         {item.layer && (
                                             <span className={`kb-item-layer-badge ${item.layer}`}>
                                                 {item.layer === 'vault' && <Lock size={10} />}
+                                                {item.layer === 'admin_vault' && <Shield size={10} />}
                                                 {item.layer === 'personal' && <User size={10} />}
                                                 {item.layer === 'library' && <Users size={10} />}
-                                                {item.layer}
+                                                {/* Display proper layer names */}
+                                                {item.layer === 'vault' ? 'Knowledge Base' :
+                                                    item.layer === 'admin_vault' ? 'Vault' :
+                                                        item.layer === 'personal' ? 'My Stuff' :
+                                                            item.layer === 'library' ? 'Library' : item.layer}
                                             </span>
                                         )}
                                     </div>
@@ -490,6 +498,17 @@ function KnowledgeBase({ layer = 'personal' }) {
                                                 title="Add to Knowledge Base"
                                             >
                                                 <Lock size={16} />
+                                            </button>
+                                        )}
+
+                                        {/* Promote to Vault (admin only - from personal/vault) */}
+                                        {config.canPromoteToVault && item.layer !== 'admin_vault' && (
+                                            <button
+                                                className="btn btn-ghost btn-icon btn-sm"
+                                                onClick={() => handleSaveTo(item.id, 'admin_vault')}
+                                                title="Add to Vault (Admin Only)"
+                                            >
+                                                <Shield size={16} />
                                             </button>
                                         )}
 

@@ -782,6 +782,7 @@ function VoiceRecorder({ isDemoMode }) {
                                 ? {
                                     ...r,
                                     status: 'complete',
+                                    addedToBrains: true, // Already saved to My Stuff by backend
                                     backendId: data.item?.id,
                                     transcription: data.item?.transcription || '[Transcription complete]',
                                     wordCount: data.item?.wordCount || 0
@@ -1060,7 +1061,7 @@ function TextInput({ isDemoMode }) {
                 }, ...prev]);
                 setTitle('');
                 setContent('');
-                alert('Text saved to knowledge base!');
+                alert('Text saved to My Stuff!');
             } else {
                 const errorData = await response.json();
                 alert('Failed to save: ' + (errorData.error || 'Unknown error'));
@@ -1077,7 +1078,7 @@ function TextInput({ isDemoMode }) {
         <div className="text-input-section">
             <div className="section-header">
                 <h3>Add Text Knowledge</h3>
-                <p>Type or paste text to add it directly to the knowledge base</p>
+                <p>Type or paste text to add it directly to My Stuff</p>
             </div>
 
             <div className="text-form">
@@ -1121,7 +1122,7 @@ function TextInput({ isDemoMode }) {
                     ) : (
                         <>
                             <Check size={18} />
-                            Save to Knowledge Base
+                            Save to My Stuff
                         </>
                     )}
                 </button>
