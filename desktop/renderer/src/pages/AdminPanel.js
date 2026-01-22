@@ -437,11 +437,18 @@ function AdminPanel() {
                 });
 
                 if (response.ok) {
-                    const newClient = await response.json();
-                    console.log('[ADMIN] Client created on Railway:', newClient);
+                    const responseData = await response.json();
+                    console.log('[ADMIN] Client created on Railway:', responseData);
+                    // API returns { success: true, client: {...} } - extract the client object
+                    const newClient = responseData.client || responseData;
+                    // Ensure companyName is set (was 'name' from database)
+                    if (!newClient.companyName && newClient.name) {
+                        newClient.companyName = newClient.name;
+                    }
                     // Add to local state with full client object
                     setClients(prev => [{
                         ...newClient,
+                        companyName: newClient.companyName || clientForm.companyName, // Fallback to form value
                         knowledgeScore: 0,
                         monthlyQuestions: 0,
                         apiKeys: { openrouter: { enabled: false }, elevenlabs: { enabled: false } }
