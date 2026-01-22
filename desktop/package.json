@@ -1,6 +1,6 @@
 {
   "name": "bam-ai-desktop",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "BAM.ai - AI-Powered Employee Knowledge Cloning Platform",
   "main": "main/index.js",
   "scripts": {
