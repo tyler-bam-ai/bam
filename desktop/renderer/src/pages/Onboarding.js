@@ -1886,6 +1886,10 @@ function Onboarding() {
                     <Download size={18} />
                     Export
                 </button>
+                <button className="btn btn-ghost" onClick={importFromJSON}>
+                    <Upload size={18} />
+                    Import
+                </button>
                 <button
                     className="btn btn-primary"
                     onClick={saveClientToDatabase}
@@ -2661,14 +2665,6 @@ function Onboarding() {
                 <div className="header-actions">
                     <button className="btn btn-ghost" onClick={handleNewSession}>
                         New Session
-                    </button>
-                    <button
-                        className="btn btn-secondary"
-                        onClick={saveToFile}
-                        disabled={saving}
-                    >
-                        {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
-                        Save
                     </button>
                 </div>
             </div>
