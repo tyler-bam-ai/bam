@@ -44,25 +44,45 @@ async function initializeDatabase() {
         if (pgPool) return pgPool;
 
         console.log('[DB] Connecting to PostgreSQL...');
-        pgPool = new Pool({
-            connectionString: process.env.DATABASE_URL,
-            ssl: { rejectUnauthorized: false }
-        });
 
-        // Test connection
-        try {
-            const client = await pgPool.connect();
-            console.log('[DB] PostgreSQL connected successfully');
-            client.release();
-        } catch (err) {
-            console.error('[DB] PostgreSQL connection failed:', err);
-            throw err;
+        // Retry logic for PostgreSQL connection
+        const maxRetries = 3;
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                pgPool = new Pool({
+                    connectionString: process.env.DATABASE_URL,
+                    ssl: { rejectUnauthorized: false },
+                    connectionTimeoutMillis: 10000
+                });
+
+                // Test connection
+                const client = await pgPool.connect();
+                console.log('[DB] PostgreSQL connected successfully on attempt', attempt);
+                client.release();
+
+                // Initialize PostgreSQL schema
+                await initializePostgresSchema();
+                return pgPool;
+            } catch (err) {
+                lastError = err;
+                console.error(`[DB] PostgreSQL connection attempt ${attempt}/${maxRetries} failed:`, err.message);
+                if (pgPool) {
+                    await pgPool.end().catch(() => { });
+                    pgPool = null;
+                }
+                if (attempt < maxRetries) {
+                    console.log('[DB] Retrying in 2 seconds...');
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
         }
 
-        // Initialize PostgreSQL schema
-        await initializePostgresSchema();
-
-        return pgPool;
+        // All retries failed - fallback to SQLite
+        console.warn('[DB] PostgreSQL connection failed after', maxRetries, 'attempts. Falling back to SQLite.');
+        console.warn('[DB] Last error:', lastError?.message);
+        // Continue to SQLite initialization below
     }
 
     // SQLite path (local development)
