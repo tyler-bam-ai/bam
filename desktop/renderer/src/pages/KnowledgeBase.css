@@ -353,6 +353,7 @@
     width: 16px;
     height: 16px;
 }
+
 /* ==========================================
    KNOWLEDGE VAULT LAYER TABS
    ========================================== */
@@ -493,4 +494,151 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+/* ============================================
+   LIGHT MODE OVERRIDES
+   ============================================ */
+
+.theme-light .knowledge-base-page,
+[class*="-light"] .knowledge-base-page {
+    color: var(--color-text-primary);
+}
+
+.theme-light .kb-header-left h1,
+[class*="-light"] .kb-header-left h1 {
+    color: var(--color-text-primary);
+}
+
+.theme-light .kb-subtitle,
+[class*="-light"] .kb-subtitle {
+    color: var(--color-text-secondary);
+}
+
+.theme-light .kb-search,
+[class*="-light"] .kb-search,
+.theme-light .kb-filter-group,
+[class*="-light"] .kb-filter-group {
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-border-default);
+}
+
+.theme-light .kb-search input,
+[class*="-light"] .kb-search input {
+    color: var(--color-text-primary);
+}
+
+.theme-light .kb-filter-group select,
+[class*="-light"] .kb-filter-group select {
+    color: var(--color-text-primary);
+}
+
+.theme-light .kb-item-card,
+[class*="-light"] .kb-item-card {
+    background: var(--color-bg-primary);
+    border-color: var(--color-border-default);
+}
+
+.theme-light .kb-item-title,
+[class*="-light"] .kb-item-title {
+    color: var(--color-text-primary);
+}
+
+.theme-light .kb-item-preview,
+[class*="-light"] .kb-item-preview {
+    color: var(--color-text-secondary);
+}
+
+.theme-light .kb-item-meta,
+[class*="-light"] .kb-item-meta {
+    color: var(--color-text-tertiary);
+}
+
+/* Modal - Critical for visibility */
+.theme-light .kb-modal-overlay,
+[class*="-light"] .kb-modal-overlay {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.theme-light .kb-modal,
+[class*="-light"] .kb-modal {
+    background: var(--color-bg-primary);
+    border-color: var(--color-border-default);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+.theme-light .kb-modal-header,
+[class*="-light"] .kb-modal-header {
+    border-bottom-color: var(--color-border-default);
+}
+
+.theme-light .kb-modal-header h2,
+[class*="-light"] .kb-modal-header h2 {
+    color: var(--color-text-primary);
+}
+
+.theme-light .kb-modal-header button,
+[class*="-light"] .kb-modal-header button {
+    color: var(--color-text-secondary);
+    background: var(--color-bg-tertiary);
+}
+
+.theme-light .kb-modal-header button:hover,
+[class*="-light"] .kb-modal-header button:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+}
+
+.theme-light .kb-modal-meta,
+[class*="-light"] .kb-modal-meta {
+    color: var(--color-text-secondary);
+}
+
+.theme-light .kb-modal-text,
+[class*="-light"] .kb-modal-text {
+    color: var(--color-text-primary);
+    background: var(--color-bg-secondary);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--color-border-subtle);
+}
+
+.theme-light .kb-modal-actions,
+[class*="-light"] .kb-modal-actions {
+    border-top-color: var(--color-border-default);
+    background: var(--color-bg-tertiary);
+}
+
+.theme-light .kb-modal-content p,
+[class*="-light"] .kb-modal-content p {
+    color: var(--color-text-primary);
+}
+
+/* Empty states and loading */
+.theme-light .kb-loading,
+[class*="-light"] .kb-loading,
+.theme-light .kb-error,
+[class*="-light"] .kb-error,
+.theme-light .kb-empty-state,
+[class*="-light"] .kb-empty-state {
+    color: var(--color-text-secondary);
+}
+
+.theme-light .kb-empty-state h2,
+[class*="-light"] .kb-empty-state h2 {
+    color: var(--color-text-primary);
+}
+
+/* Layer tabs */
+.theme-light .kb-layer-tab,
+[class*="-light"] .kb-layer-tab {
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-border-default);
+    color: var(--color-text-secondary);
+}
+
+.theme-light .kb-layer-tab:hover,
+[class*="-light"] .kb-layer-tab:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
 }

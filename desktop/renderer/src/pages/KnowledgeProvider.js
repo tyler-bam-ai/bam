@@ -915,9 +915,9 @@ function VoiceRecorder({ isDemoMode }) {
                                     {rec.wordCount > 0 && (
                                         <span className="word-count">{rec.wordCount} words</span>
                                     )}
-                                    {/* Add to Brains button */}
+                                    {/* Add to My Knowledge button */}
                                     {rec.addedToBrains ? (
-                                        <span className="added-to-brains" title="Added to Brains">
+                                        <span className="added-to-brains" title="Added to My Knowledge">
                                             <Brain size={16} />
                                             ✓
                                         </span>
@@ -945,18 +945,18 @@ function VoiceRecorder({ isDemoMode }) {
                                                         setRecordings(prev => prev.map(r =>
                                                             r.id === rec.id ? { ...r, addedToBrains: true } : r
                                                         ));
-                                                        addLog('Added to Brains!', 'success');
+                                                        addLog('Added to My Knowledge!', 'success');
                                                     } else {
-                                                        addLog('Failed to add to Brains', 'error');
+                                                        addLog('Failed to add to My Knowledge', 'error');
                                                     }
                                                 } catch (err) {
                                                     addLog(`Error: ${err.message}`, 'error');
                                                 }
                                             }}
-                                            title="Add to Brains"
+                                            title="Add to My Knowledge"
                                         >
                                             <Brain size={16} />
-                                            Add to Brains
+                                            Add to My Knowledge
                                         </button>
                                     )}
                                 </div>
