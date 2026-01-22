@@ -433,6 +433,8 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
     try {
         const { clientId } = req.params;
 
+        console.log(`[KNOWLEDGE] GET items for clientId: ${clientId}`);
+
         // Use only base columns that definitely exist in all environments
         // Filter out deleted items (status = 'ready' means active)
         const items = await db.prepare(`
@@ -441,6 +443,8 @@ router.get('/:clientId', optionalAuth, async (req, res) => {
             WHERE company_id = ? AND status = 'ready'
             ORDER BY created_at DESC
         `).all(clientId);
+
+        console.log(`[KNOWLEDGE] Found ${items.length} items for company_id=${clientId}`);
 
         const formattedItems = items.map(item => {
             const metadata = item.metadata ? JSON.parse(item.metadata) : {};

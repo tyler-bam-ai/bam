@@ -28,7 +28,10 @@ router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        console.log('[AUTH] Login attempt for:', email);
+
         if (!email || !password) {
+            console.log('[AUTH] Missing email or password');
             return res.status(400).json({ error: 'Email and password are required' });
         }
 
@@ -41,14 +44,21 @@ router.post('/login', async (req, res) => {
         `).get(email);
 
         if (!user) {
+            console.log('[AUTH] User not found:', email);
             return res.status(401).json({ error: 'Invalid email or password' });
         }
+
+        console.log('[AUTH] User found:', user.email, 'role:', user.role, 'company:', user.company_id);
+        console.log('[AUTH] Has password_hash:', !!user.password_hash, 'hash length:', user.password_hash?.length);
 
         const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
         if (!isValidPassword) {
+            console.log('[AUTH] Invalid password for:', email);
             return res.status(401).json({ error: 'Invalid email or password' });
         }
+
+        console.log('[AUTH] Login successful for:', email);
 
         const token = generateToken(user);
 
@@ -68,7 +78,7 @@ router.post('/login', async (req, res) => {
             token
         });
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('[AUTH] Login error:', error);
         res.status(500).json({ error: 'Login failed' });
     }
 });
