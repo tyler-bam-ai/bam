@@ -77,8 +77,8 @@ function KnowledgeBase({ layer = 'personal' }) {
     // Layer-specific config
     const LAYER_CONFIG = {
         personal: {
-            title: 'My Knowledge',
-            subtitle: 'Your personal uploads that enhance your BAM Brain',
+            title: 'My Stuff',
+            subtitle: 'Your personal uploads that enhance your Brain',
             icon: User,
             canDelete: true,
             canShare: true,  // Can share to library
@@ -91,15 +91,24 @@ function KnowledgeBase({ layer = 'personal' }) {
             canDelete: false,  // Can't delete others' shared items
             canShare: false,
             canSave: true,     // Can save to personal
-            canPromote: isAdmin  // Admins can promote to vault
+            canPromote: isAdmin  // Admins can promote to Knowledge Base
         },
         vault: {
-            title: 'Vault',
-            subtitle: 'Protected company-wide knowledge. ' + (isAdmin ? 'Admin access granted.' : 'View only.'),
+            title: 'Knowledge Base',
+            subtitle: 'Company-wide knowledge. ' + (isAdmin ? 'Admin access granted.' : 'View only.'),
             icon: Lock,
             canDelete: isAdmin,
             canShare: false,
             canSave: true      // Can copy to personal
+        },
+        admin_vault: {
+            title: 'Vault',
+            subtitle: 'Sensitive company documents. Admin access only.',
+            icon: Shield,
+            canDelete: true,   // Admins can delete
+            canShare: false,   // No sharing to library
+            canSave: false,    // Stays in vault
+            isAdminOnly: true  // Used for filtering in brain queries
         }
     };
 
@@ -241,7 +250,7 @@ function KnowledgeBase({ layer = 'personal' }) {
             });
 
             if (response.ok) {
-                const layerName = targetLayer === 'vault' ? 'Vault' : 'My Knowledge';
+                const layerName = targetLayer === 'vault' ? 'Knowledge Base' : 'My Stuff';
                 alert(`Saved to ${layerName} successfully!`);
                 fetchItems(); // Refresh
             } else {
@@ -258,7 +267,13 @@ function KnowledgeBase({ layer = 'personal' }) {
     const filteredItems = items
         .filter(item => {
             // Filter by this page's layer
-            if (item.layer !== layer) return false;
+            if (item.layer !== layer && layer !== 'admin_vault') return false;
+            if (layer === 'admin_vault' && item.layer !== 'admin_vault') return false;
+
+            // For personal layer, only show items belonging to the current user
+            if (layer === 'personal' && item.userId && userId && item.userId !== userId) {
+                return false;
+            }
 
             // Type filter
             if (typeFilter !== 'all' && item.type !== typeFilter) return false;
@@ -461,18 +476,18 @@ function KnowledgeBase({ layer = 'personal' }) {
                                             <button
                                                 className="btn btn-ghost btn-icon btn-sm"
                                                 onClick={() => handleSaveTo(item.id, 'personal')}
-                                                title="Save to My Knowledge"
+                                                title="Save to My Stuff"
                                             >
                                                 <User size={16} />
                                             </button>
                                         )}
 
-                                        {/* Promote to Vault (admin from library) */}
+                                        {/* Promote to Knowledge Base (admin from library) */}
                                         {config.canPromote && (
                                             <button
                                                 className="btn btn-ghost btn-icon btn-sm"
                                                 onClick={() => handleSaveTo(item.id, 'vault')}
-                                                title="Add to Vault"
+                                                title="Add to Knowledge Base"
                                             >
                                                 <Lock size={16} />
                                             </button>

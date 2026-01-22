@@ -1,5 +1,5 @@
 /**
- * BAM Brains - 3 Specialized AI Brains
+ * Brain - 3 Specialized AI Brains
  * 
  * 1. Operations Brain - Trained on EOS methodology
  * 2. Employee Brain - Trained on GH Smart methodology  
@@ -1069,13 +1069,13 @@ function getBrainResponse(brainId, question) {
         ],
         support: [
             `Here's how to do that in BAM.ai:\n\n### Step-by-Step Guide\n\n1. **Navigate** to the relevant section from the sidebar\n2. **Click** on the feature you want to use\n3. **Follow** the on-screen prompts\n\n> 💡 **Pro tip:** Use Demo Mode to explore features with sample data!\n\nWould you like me to walk you through a specific feature?`,
-            `I can help with that! Here are some tips:\n\n### Quick Tips\n\n- 📊 **Dashboard** - See your key metrics at a glance\n- 📚 **Brain Training** - Add knowledge to your AI\n- 💬 **BAM Brains** - Use specialized AI assistants\n- 🎬 **Content Engine** - Create and schedule content\n\nWhich area would you like to learn more about?`
+            `I can help with that! Here are some tips:\n\n### Quick Tips\n\n- 📊 **Dashboard** - See your key metrics at a glance\n- 📚 **Brain Training** - Add knowledge to your AI\n- 💬 **Brain** - Use specialized AI assistants\n- 🎬 **Content Engine** - Create and schedule content\n\nWhich area would you like to learn more about?`
         ]
     };
     return responses[brainId] || responses.operations;
 }
 
-// Main BAM Brains Component
+// Main Brain Component
 function KnowledgeConsumer() {
     const location = useLocation();
 

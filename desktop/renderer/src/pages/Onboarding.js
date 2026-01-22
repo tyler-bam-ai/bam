@@ -2600,7 +2600,7 @@ function Onboarding() {
                     <div>
                         <h3>Successfully Delivered! 🎉</h3>
                         <p>
-                            {sessionData.companyName} has been added to the client list and can now access their BAM Brains.
+                            {sessionData.companyName} has been added to the client list and can now access their Brain.
                         </p>
                         <div className="delivered-actions">
                             <button className="btn btn-secondary" onClick={exportToJSON}>

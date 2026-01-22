@@ -81,9 +81,16 @@ function App() {
                     <KnowledgeBase layer="library" />
                 } />
 
-                {/* Vault - all users can view, admin can edit (permissions enforced in component) */}
-                <Route path="vault" element={
+                {/* Knowledge Base - company-wide knowledge (all users can view, admin can edit) */}
+                <Route path="knowledge-base" element={
                     <KnowledgeBase layer="vault" />
+                } />
+
+                {/* Vault - admin-only sensitive documents */}
+                <Route path="vault" element={
+                    <ProtectedRoute allowedRoles={['bam_admin', 'client_admin']}>
+                        <KnowledgeBase layer="admin_vault" />
+                    </ProtectedRoute>
                 } />
 
                 {/* Combined Admin Panel (includes Client Management) */}

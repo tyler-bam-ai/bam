@@ -118,6 +118,9 @@ router.post('/voice', optionalAuth, upload.single('audio'), async (req, res) => 
             transcription = '[No API key - transcription skipped]';
         }
 
+        // Get user ID from request (if authenticated)
+        const userId = req.user?.id || null;
+
         // Save to knowledge_items table
         const itemId = uuidv4();
         const itemTitle = title || `Voice Memo - ${new Date().toLocaleString()}`;
@@ -128,6 +131,8 @@ router.post('/voice', optionalAuth, upload.single('audio'), async (req, res) => 
             mimeType: req.file.mimetype,
             wordCount: transcription.split(/\s+/).filter(w => w).length,
             source: 'brain_training',
+            layer: 'personal',  // Default to personal layer
+            userId: userId,     // Track who created this item
             createdAt: new Date().toISOString()
         });
 
@@ -183,6 +188,9 @@ router.post('/text', optionalAuth, async (req, res) => {
 
         console.log(`[KNOWLEDGE] Saving text for client ${clientId}: ${content.length} chars, ${wordCount || 0} words`);
 
+        // Get user ID from request (if authenticated)
+        const userId = req.user?.id || null;
+
         // Save to knowledge_items table
         const itemId = uuidv4();
         const itemTitle = title || `${type || 'Text'} - ${new Date().toLocaleString()}`;
@@ -190,6 +198,8 @@ router.post('/text', optionalAuth, async (req, res) => {
             type: type || 'text',
             wordCount: wordCount || content.split(/\s+/).filter(w => w).length,
             source: 'brain_training',
+            layer: 'personal',  // Default to personal layer
+            userId: userId,     // Track who created this item
             createdAt: new Date().toISOString()
         });
 
