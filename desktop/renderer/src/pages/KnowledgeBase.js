@@ -29,7 +29,10 @@ import {
     ThumbsUp,
     Share2,
     Shield,
-    ChevronUp
+    ChevronUp,
+    ArrowRightLeft,
+    Library,
+    Boxes
 } from 'lucide-react';
 import { useClientContext } from '../contexts/ClientContext';
 import { useAuth } from '../hooks/useAuth';
@@ -263,6 +266,38 @@ function KnowledgeBase({ layer = 'personal' }) {
         } catch (err) {
             console.error('[KNOWLEDGE BASE] Save error:', err);
             alert('Failed to save: ' + err.message);
+        }
+    };
+
+    // MOVE item to a different layer (admin only - actually moves, not copies)
+    const handleMoveToLayer = async (itemId, targetLayer) => {
+        const layerNames = {
+            personal: 'My Stuff',
+            library: 'Library',
+            knowledge_base: 'Knowledge Base',
+            vault: 'Vault'
+        };
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/knowledge/item/${itemId}/layer`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({ layer: targetLayer })
+            });
+
+            if (response.ok) {
+                alert(`Moved to ${layerNames[targetLayer] || targetLayer}!`);
+                fetchItems(); // Refresh to reflect the move
+            } else {
+                const data = await response.json();
+                alert(data.error || 'Failed to move');
+            }
+        } catch (err) {
+            console.error('[KNOWLEDGE BASE] Move error:', err);
+            alert('Failed to move: ' + err.message);
         }
     };
 
@@ -510,6 +545,61 @@ function KnowledgeBase({ layer = 'personal' }) {
                                             >
                                                 <Shield size={16} />
                                             </button>
+                                        )}
+
+                                        {/* MOVE TO dropdown for admins */}
+                                        {isAdmin && (
+                                            <div className="move-dropdown" style={{ position: 'relative', display: 'inline-block' }}>
+                                                <button
+                                                    className="btn btn-ghost btn-icon btn-sm"
+                                                    title="Move to..."
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const dropdown = e.currentTarget.nextElementSibling;
+                                                        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+                                                    }}
+                                                >
+                                                    <ArrowRightLeft size={16} />
+                                                </button>
+                                                <div
+                                                    className="move-menu"
+                                                    style={{
+                                                        display: 'none',
+                                                        position: 'absolute',
+                                                        top: '100%',
+                                                        right: 0,
+                                                        background: 'var(--bg-secondary)',
+                                                        border: '1px solid var(--border-color)',
+                                                        borderRadius: '8px',
+                                                        padding: '0.5rem 0',
+                                                        zIndex: 100,
+                                                        minWidth: '150px',
+                                                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                                                    }}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    {layer !== 'personal' && (
+                                                        <button onClick={() => handleMoveToLayer(item.id, 'personal')} style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', textAlign: 'left', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                                                            <User size={14} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} /> My Stuff
+                                                        </button>
+                                                    )}
+                                                    {layer !== 'library' && (
+                                                        <button onClick={() => handleMoveToLayer(item.id, 'library')} style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', textAlign: 'left', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                                                            <Users size={14} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} /> Library
+                                                        </button>
+                                                    )}
+                                                    {layer !== 'knowledge_base' && (
+                                                        <button onClick={() => handleMoveToLayer(item.id, 'knowledge_base')} style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', textAlign: 'left', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                                                            <Database size={14} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} /> Knowledge Base
+                                                        </button>
+                                                    )}
+                                                    {layer !== 'vault' && layer !== 'admin_vault' && (
+                                                        <button onClick={() => handleMoveToLayer(item.id, 'vault')} style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', textAlign: 'left', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                                                            <Shield size={14} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} /> Vault
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
                                         )}
 
                                         <button

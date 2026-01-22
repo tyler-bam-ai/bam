@@ -579,6 +579,47 @@ router.post('/item/:itemId/vault', optionalAuth, async (req, res) => {
 });
 
 /**
+ * Move item to any layer (admin only)
+ * POST /api/knowledge/item/:itemId/layer
+ * Body: { layer: 'personal' | 'library' | 'knowledge_base' | 'vault' }
+ */
+router.post('/item/:itemId/layer', optionalAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const { layer } = req.body;
+
+        const validLayers = ['personal', 'library', 'knowledge_base', 'vault'];
+        if (!layer || !validLayers.includes(layer)) {
+            return res.status(400).json({
+                error: `Invalid layer. Must be one of: ${validLayers.join(', ')}`
+            });
+        }
+
+        console.log(`[KNOWLEDGE] Moving item ${itemId} to layer: ${layer}`);
+
+        // Update the layer in metadata as well for compatibility
+        const item = await db.prepare('SELECT metadata FROM knowledge_items WHERE id = ?').get(itemId);
+        let metadata = {};
+        try {
+            metadata = item?.metadata ? JSON.parse(item.metadata) : {};
+        } catch (e) { }
+        metadata.layer = layer;
+        metadata.movedAt = new Date().toISOString();
+
+        await db.run(`
+            UPDATE knowledge_items 
+            SET layer = ?, metadata = ?, is_hidden = FALSE 
+            WHERE id = ?
+        `, layer, JSON.stringify(metadata), itemId);
+
+        res.json({ success: true, message: `Item moved to ${layer}`, layer });
+    } catch (error) {
+        console.error('[KNOWLEDGE] Move to layer error:', error);
+        res.status(500).json({ error: 'Failed to move item' });
+    }
+});
+
+/**
  * Download library item to personal (creates a copy)
  * POST /api/knowledge/library/:itemId/download
  */
