@@ -33,6 +33,7 @@ import {
     Save,
     RefreshCw,
     MousePointer2,
+    Cloud,
     XCircle
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
@@ -726,7 +727,19 @@ function AdminPanel() {
                                                 {client.companyName.charAt(0)}
                                             </div>
                                             <div className="client-info">
-                                                <span className="client-name">{client.companyName}</span>
+                                                <span className="client-name">
+                                                    {client.companyName}
+                                                    <Cloud
+                                                        size={14}
+                                                        className="cloud-sync-icon"
+                                                        title="Synced to Railway Cloud"
+                                                        style={{
+                                                            marginLeft: '6px',
+                                                            color: '#a855f7',
+                                                            verticalAlign: 'middle'
+                                                        }}
+                                                    />
+                                                </span>
                                                 <span className="client-email">{client.contactEmail}</span>
                                             </div>
                                         </div>
