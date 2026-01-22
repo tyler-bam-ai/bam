@@ -34,6 +34,8 @@ import {
     RefreshCw,
     MousePointer2,
     Cloud,
+    CloudOff,
+    Loader2,
     XCircle
 } from 'lucide-react';
 import { useDemoMode } from '../contexts/DemoModeContext';
@@ -168,6 +170,7 @@ function AdminPanel() {
     const [clients, setClients] = useState([]);
     const [activity, setActivity] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [syncStatus, setSyncStatus] = useState({}); // Track sync status per client: { clientId: 'syncing' | 'synced' | 'error' }
 
     // Modal state
     const [showClientModal, setShowClientModal] = useState(false);
@@ -211,6 +214,10 @@ function AdminPanel() {
                 // Filter out any malformed clients (missing companyName)
                 const validClients = clientsList.filter(c => c && c.companyName);
                 setClients(validClients);
+                // Mark all fetched clients as synced (they came from Railway, so they're definitely synced)
+                const syncedStatus = {};
+                validClients.forEach(c => { syncedStatus[c.id] = 'synced'; });
+                setSyncStatus(prev => ({ ...prev, ...syncedStatus }));
                 console.log('[ADMIN] Set valid clients:', validClients.length);
             } else {
                 console.error('[ADMIN] Failed to fetch clients:', response.status);
@@ -393,7 +400,13 @@ function AdminPanel() {
 
     const handleSaveClient = async () => {
         const token = localStorage.getItem('bam_token');
+        // Temporary ID for new client to show syncing state
+        const tempId = editMode && selectedClient ? selectedClient.id : `temp-${Date.now()}`;
+
         try {
+            // Set syncing status
+            setSyncStatus(prev => ({ ...prev, [tempId]: 'syncing' }));
+
             if (editMode && selectedClient) {
                 // UPDATE existing client via API
                 const response = await fetch(`${API_URL}/api/clients/${selectedClient.id}`, {
@@ -410,9 +423,12 @@ function AdminPanel() {
                     setClients(prev => prev.map(c =>
                         c.id === selectedClient.id ? { ...c, ...updatedClient } : c
                     ));
+                    // Set synced status
+                    setSyncStatus(prev => ({ ...prev, [selectedClient.id]: 'synced' }));
                     console.log('[ADMIN] Client updated on Railway:', selectedClient.id);
                 } else {
                     const error = await response.json();
+                    setSyncStatus(prev => ({ ...prev, [selectedClient.id]: 'error' }));
                     alert('Failed to update client: ' + (error.error || 'Unknown error'));
                     return;
                 }
@@ -454,6 +470,8 @@ function AdminPanel() {
                         monthlyQuestions: 0,
                         apiKeys: { openrouter: { enabled: false }, elevenlabs: { enabled: false } }
                     }, ...prev]);
+                    // Set synced status for new client
+                    setSyncStatus(prev => ({ ...prev, [newClient.id]: 'synced' }));
                 } else {
                     const error = await response.json();
                     alert('Failed to create client: ' + (error.error || 'Unknown error'));
@@ -463,6 +481,9 @@ function AdminPanel() {
             closeClientModal();
         } catch (error) {
             console.error('[ADMIN] Save client error:', error);
+            if (editMode && selectedClient) {
+                setSyncStatus(prev => ({ ...prev, [selectedClient.id]: 'error' }));
+            }
             alert('Failed to save client: ' + error.message);
         }
     };
@@ -729,16 +750,44 @@ function AdminPanel() {
                                             <div className="client-info">
                                                 <span className="client-name">
                                                     {client.companyName}
-                                                    <Cloud
-                                                        size={14}
-                                                        className="cloud-sync-icon"
-                                                        title="Synced to Railway Cloud"
-                                                        style={{
-                                                            marginLeft: '6px',
-                                                            color: '#a855f7',
-                                                            verticalAlign: 'middle'
-                                                        }}
-                                                    />
+                                                    {/* Dynamic Cloud Sync Indicator */}
+                                                    {syncStatus[client.id] === 'syncing' ? (
+                                                        <Loader2
+                                                            size={14}
+                                                            className="cloud-sync-icon syncing"
+                                                            title="Syncing to Railway..."
+                                                            style={{
+                                                                marginLeft: '6px',
+                                                                color: '#f59e0b',
+                                                                verticalAlign: 'middle',
+                                                                animation: 'spin 1s linear infinite'
+                                                            }}
+                                                        />
+                                                    ) : syncStatus[client.id] === 'error' ? (
+                                                        <CloudOff
+                                                            size={14}
+                                                            className="cloud-sync-icon error"
+                                                            title="Sync failed - click to retry"
+                                                            style={{
+                                                                marginLeft: '6px',
+                                                                color: '#ef4444',
+                                                                verticalAlign: 'middle',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <Cloud
+                                                            size={14}
+                                                            className="cloud-sync-icon synced"
+                                                            title="✓ Synced to Railway Cloud"
+                                                            style={{
+                                                                marginLeft: '6px',
+                                                                color: '#22c55e',
+                                                                verticalAlign: 'middle',
+                                                                fill: '#22c55e20'
+                                                            }}
+                                                        />
+                                                    )}
                                                 </span>
                                                 <span className="client-email">{client.contactEmail}</span>
                                             </div>

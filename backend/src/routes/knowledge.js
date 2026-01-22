@@ -140,13 +140,14 @@ router.post('/voice', optionalAuth, upload.single('audio'), async (req, res) => 
 
         try {
             // Extract layer from request body (default to 'personal')
+            // Store layer and userId in metadata for now (columns may not exist on old DBs)
             const layer = req.body.layer || 'personal';
 
-            // Use await on the insert - db.prepare().run() returns a Promise on PostgreSQL
+            // Use await on the insert - backwards compatible INSERT (no user_id/layer columns)
             const insertResult = await db.prepare(`
-                INSERT INTO knowledge_items (id, company_id, user_id, type, title, content, layer, status, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(itemId, clientId, userId, 'voice_memo', itemTitle, transcription, layer, 'ready', metadata);
+                INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(itemId, clientId, 'voice_memo', itemTitle, transcription, 'ready', metadata);
             console.log(`[KNOWLEDGE] Saved voice memo ${itemId} for client ${clientId}, layer: ${layer}`, insertResult);
         } catch (dbError) {
             console.error('[KNOWLEDGE] Database save error:', dbError);
@@ -207,14 +208,16 @@ router.post('/text', optionalAuth, async (req, res) => {
         });
 
         // Extract layer from request body (default to 'personal')
+        // Store in metadata for backwards compatibility
         const layer = req.body.layer || 'personal';
 
         await db.prepare(`
-            INSERT INTO knowledge_items (id, company_id, user_id, type, title, content, layer, status, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(itemId, clientId, userId, type || 'text', itemTitle, content, layer, 'ready', metadata);
+            INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(itemId, clientId, type || 'text', itemTitle, content, 'ready', metadata);
 
         console.log(`[KNOWLEDGE] Saved text item ${itemId} for client ${clientId}, layer: ${layer}`);
+
 
         res.json({
             success: true,

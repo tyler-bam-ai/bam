@@ -844,73 +844,30 @@ router.post('/add-to-knowledge', authMiddleware, async (req, res) => {
 });
 
 // Helper: Query knowledge base with semantic search
-// LAYER FILTERING RULES:
-// - Library items NEVER affect brain (they're just shared storage)
-// - personal (My Stuff): Only user's own items affect their brain
-// - vault (Knowledge Base): Affects ALL users' brains (company-wide)
-// - admin_vault (Vault): Only affects ADMIN brains
+// NOTE: Using backwards-compatible query (no layer column) until Railway migration runs
 async function queryKnowledgeBase(knowledgeBaseId, query, clientId = null, userId = null, userRole = null) {
     try {
-        console.log(`[KNOWLEDGE] Searching for: "${query.substring(0, 50)}..." clientId: ${clientId || 'any'}, userId: ${userId}, role: ${userRole}`);
-
-        // Determine which layers affect this user's brain
-        const isAdmin = userRole === 'bam_admin' || userRole === 'client_admin';
-
-        // Layers that affect brain:
-        // - 'personal' (My Stuff) - only user's own items
-        // - 'vault' (Knowledge Base) - company-wide, affects everyone
-        // - 'admin_vault' (Vault) - admin-only, only affects admins
-        // - 'library' - NEVER affects brain directly, just shared storage
+        console.log(`[KNOWLEDGE] Searching for: "${query.substring(0, 50)}..." clientId: ${clientId || 'any'}`);
 
         let knowledgeItems = [];
 
         if (clientId) {
-            // Build query based on user role
-            // Always include: vault (Knowledge Base) - affects all users
-            // For admins: also include admin_vault (Vault)
-            // For personal: only include items where userId matches
-
-            let layerCondition;
-            if (isAdmin) {
-                // Admins: personal (own) + vault + admin_vault
-                layerCondition = `(
-                    layer = 'vault' OR 
-                    layer = 'admin_vault' OR 
-                    (layer = 'personal' AND (metadata IS NULL OR JSON_EXTRACT(metadata, '$.userId') = ?))
-                )`;
-            } else {
-                // Regular users: personal (own) + vault only
-                layerCondition = `(
-                    layer = 'vault' OR 
-                    (layer = 'personal' AND (metadata IS NULL OR JSON_EXTRACT(metadata, '$.userId') = ?))
-                )`;
-            }
-
-            // Query with layer filtering - exclude 'library' which never affects brain
-            const sql = `
-                SELECT id, type, title, content, metadata, layer, created_at
+            // Search within specific client's knowledge - get ALL items for this client
+            // Using simple query without layer column (may not exist on Railway yet)
+            knowledgeItems = await db.prepare(`
+                SELECT id, type, title, content, metadata, created_at
                 FROM knowledge_items
-                WHERE company_id = ? AND status = 'ready' AND ${layerCondition}
+                WHERE company_id = ? AND status = 'ready'
                 ORDER BY created_at DESC
                 LIMIT 50
-            `;
-
-            knowledgeItems = await db.prepare(sql).all(clientId, userId || '');
-
-            console.log(`[KNOWLEDGE] Query for company ${clientId} (user: ${userId}, admin: ${isAdmin}) returned ${knowledgeItems?.length || 0} items`);
-
-            // Log layer breakdown
-            const layerCounts = {};
-            (knowledgeItems || []).forEach(item => {
-                layerCounts[item.layer || 'unknown'] = (layerCounts[item.layer || 'unknown'] || 0) + 1;
-            });
-            console.log(`[KNOWLEDGE] Layer breakdown:`, layerCounts);
+            `).all(clientId);
+            console.log(`[KNOWLEDGE] Query for company ${clientId} returned ${knowledgeItems?.length || 0} items`);
         } else {
-            // No client specified - search all (fallback, less common)
+            // Search all knowledge items
             knowledgeItems = await db.prepare(`
-                SELECT id, type, title, content, metadata, layer, created_at
+                SELECT id, type, title, content, metadata, created_at
                 FROM knowledge_items
-                WHERE status = 'ready' AND layer != 'library'
+                WHERE status = 'ready'
                 ORDER BY created_at DESC
                 LIMIT 50
             `).all();
@@ -923,22 +880,63 @@ async function queryKnowledgeBase(knowledgeBaseId, query, clientId = null, userI
 
         console.log(`[KNOWLEDGE] Found ${knowledgeItems.length} knowledge items for client ${clientId}`);
 
+        // Extract layer from metadata if available (backwards compatibility)
+        // Filter based on user role if layer info is in metadata
+        const isAdmin = userRole === 'bam_admin' || userRole === 'client_admin';
+
+        const filteredItems = knowledgeItems.filter(item => {
+            // Parse metadata to get layer
+            let layer = 'personal'; // default
+            try {
+                if (item.metadata) {
+                    const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
+                    layer = meta.layer || 'personal';
+                }
+            } catch (e) {
+                // Ignore parse errors
+            }
+
+            // Library items never affect brain
+            if (layer === 'library') return false;
+
+            // admin_vault only for admins
+            if (layer === 'admin_vault' && !isAdmin) return false;
+
+            // Personal items - check userId if available
+            if (layer === 'personal' && userId) {
+                try {
+                    const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
+                    if (meta && meta.userId && meta.userId !== userId) {
+                        return false; // Not this user's personal item
+                    }
+                } catch (e) {
+                    // If we can't parse, include it
+                }
+            }
+
+            return true;
+        });
+
         // Log each item for debugging
-        knowledgeItems.forEach((item, i) => {
-            console.log(`[KNOWLEDGE] Item ${i + 1}: layer=${item.layer}, type=${item.type}, title="${item.title}"`);
+        filteredItems.forEach((item, i) => {
+            let layer = 'unknown';
+            try {
+                const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
+                layer = meta?.layer || 'personal';
+            } catch (e) { }
+            console.log(`[KNOWLEDGE] Item ${i + 1}: layer=${layer}, type=${item.type}, title="${item.title}"`);
         });
 
         // Return ALL matching knowledge items so the AI can decide what's relevant
-        const formattedDocs = knowledgeItems.map(item => ({
+        const formattedDocs = filteredItems.map(item => ({
             id: item.id,
             title: item.title,
             type: item.type,
-            layer: item.layer,
             content: item.content || '',
             createdAt: item.created_at
         }));
 
-        console.log(`[KNOWLEDGE] Returning ${formattedDocs.length} documents to AI (excluding library items)`);
+        console.log(`[KNOWLEDGE] Returning ${formattedDocs.length} documents to AI`);
 
         return {
             found: formattedDocs.length > 0,
