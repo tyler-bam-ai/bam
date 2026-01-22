@@ -60,7 +60,7 @@ function App() {
                 <Route path="dashboard" element={<Dashboard />} />
 
                 <Route path="provider/*" element={
-                    <ProtectedRoute allowedRoles={['knowledge_provider', 'client_admin', 'bam_admin']}>
+                    <ProtectedRoute allowedRoles={['knowledge_provider', 'knowledge_consumer', 'client_admin', 'bam_admin']}>
                         <KnowledgeProvider />
                     </ProtectedRoute>
                 } />
@@ -81,11 +81,9 @@ function App() {
                     <KnowledgeBase layer="library" />
                 } />
 
-                {/* Vault - admin only protected knowledge */}
+                {/* Vault - all users can view, admin can edit (permissions enforced in component) */}
                 <Route path="vault" element={
-                    <ProtectedRoute allowedRoles={['client_admin', 'bam_admin']}>
-                        <KnowledgeBase layer="vault" />
-                    </ProtectedRoute>
+                    <KnowledgeBase layer="vault" />
                 } />
 
                 {/* Combined Admin Panel (includes Client Management) */}
