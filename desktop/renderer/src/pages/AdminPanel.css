@@ -906,6 +906,7 @@
         grid-template-columns: 1fr;
     }
 }
+
 /* Knowledge Items List */
 .knowledge-items-list {
     display: flex;
@@ -1044,5 +1045,42 @@
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Cloud Sync Indicator */
+.cloud-sync-icon {
+    display: inline-block;
+    transition: all 0.2s ease;
+}
+
+.cloud-sync-icon.syncing {
+    animation: spin 1s linear infinite;
+}
+
+.cloud-sync-icon.synced {
+    opacity: 0.9;
+}
+
+.cloud-sync-icon.synced:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.cloud-sync-icon.error {
+    animation: pulse-error 1s ease infinite;
+}
+
+@keyframes pulse-error {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
 }
