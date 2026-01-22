@@ -333,7 +333,7 @@ router.post('/completions', optionalAuth, async (req, res) => {
 
         // Query knowledge base and get context with sources
         const userQuery = messages[messages.length - 1]?.content || '';
-        const knowledgeResult = await queryKnowledgeBase(knowledgeBaseId, userQuery, companyId);
+        const knowledgeResult = await queryKnowledgeBase(knowledgeBaseId, userQuery, companyId, userId, req.user?.role);
 
         // Build context message with source tracking
         let contextMessage = '';
@@ -532,8 +532,8 @@ router.post('/completions/stream', optionalAuth, async (req, res) => {
 
         // Query knowledge base with the selected client's ID
         const userQuery = messages[messages.length - 1]?.content || '';
-        const knowledgeResult = await queryKnowledgeBase(null, userQuery, knowledgeCompanyId);
-        console.log(`[STREAM] Knowledge query for company ${knowledgeCompanyId}: found=${knowledgeResult.found}, docs=${knowledgeResult.documents?.length || 0}`);
+        const knowledgeResult = await queryKnowledgeBase(null, userQuery, knowledgeCompanyId, userId, req.user?.role);
+        console.log(`[STREAM] Knowledge query for company ${knowledgeCompanyId}: found=${knowledgeResult.found}, docs=${knowledgeResult.documents?.length || 0}, layers filtered by role: ${req.user?.role}`);
 
         // Build context message
         let contextMessage = '';
@@ -844,29 +844,73 @@ router.post('/add-to-knowledge', authMiddleware, async (req, res) => {
 });
 
 // Helper: Query knowledge base with semantic search
-async function queryKnowledgeBase(knowledgeBaseId, query, clientId = null) {
+// LAYER FILTERING RULES:
+// - Library items NEVER affect brain (they're just shared storage)
+// - personal (My Stuff): Only user's own items affect their brain
+// - vault (Knowledge Base): Affects ALL users' brains (company-wide)
+// - admin_vault (Vault): Only affects ADMIN brains
+async function queryKnowledgeBase(knowledgeBaseId, query, clientId = null, userId = null, userRole = null) {
     try {
-        console.log(`[KNOWLEDGE] Searching for: "${query.substring(0, 50)}..." clientId: ${clientId || 'any'}`);
+        console.log(`[KNOWLEDGE] Searching for: "${query.substring(0, 50)}..." clientId: ${clientId || 'any'}, userId: ${userId}, role: ${userRole}`);
 
-        // Query the knowledge_items table for relevant documents
+        // Determine which layers affect this user's brain
+        const isAdmin = userRole === 'bam_admin' || userRole === 'client_admin';
+
+        // Layers that affect brain:
+        // - 'personal' (My Stuff) - only user's own items
+        // - 'vault' (Knowledge Base) - company-wide, affects everyone
+        // - 'admin_vault' (Vault) - admin-only, only affects admins
+        // - 'library' - NEVER affects brain directly, just shared storage
+
         let knowledgeItems = [];
 
         if (clientId) {
-            // Search within specific client's knowledge - get ALL items for this client
-            knowledgeItems = await db.prepare(`
-                SELECT id, type, title, content, metadata, created_at
+            // Build query based on user role
+            // Always include: vault (Knowledge Base) - affects all users
+            // For admins: also include admin_vault (Vault)
+            // For personal: only include items where userId matches
+
+            let layerCondition;
+            if (isAdmin) {
+                // Admins: personal (own) + vault + admin_vault
+                layerCondition = `(
+                    layer = 'vault' OR 
+                    layer = 'admin_vault' OR 
+                    (layer = 'personal' AND (metadata IS NULL OR JSON_EXTRACT(metadata, '$.userId') = ?))
+                )`;
+            } else {
+                // Regular users: personal (own) + vault only
+                layerCondition = `(
+                    layer = 'vault' OR 
+                    (layer = 'personal' AND (metadata IS NULL OR JSON_EXTRACT(metadata, '$.userId') = ?))
+                )`;
+            }
+
+            // Query with layer filtering - exclude 'library' which never affects brain
+            const sql = `
+                SELECT id, type, title, content, metadata, layer, created_at
                 FROM knowledge_items
-                WHERE company_id = ? AND status = 'ready'
+                WHERE company_id = ? AND status = 'ready' AND ${layerCondition}
                 ORDER BY created_at DESC
                 LIMIT 50
-            `).all(clientId);
-            console.log(`[KNOWLEDGE] Query for company ${clientId} returned ${knowledgeItems?.length || 0} items`);
+            `;
+
+            knowledgeItems = await db.prepare(sql).all(clientId, userId || '');
+
+            console.log(`[KNOWLEDGE] Query for company ${clientId} (user: ${userId}, admin: ${isAdmin}) returned ${knowledgeItems?.length || 0} items`);
+
+            // Log layer breakdown
+            const layerCounts = {};
+            (knowledgeItems || []).forEach(item => {
+                layerCounts[item.layer || 'unknown'] = (layerCounts[item.layer || 'unknown'] || 0) + 1;
+            });
+            console.log(`[KNOWLEDGE] Layer breakdown:`, layerCounts);
         } else {
-            // Search all knowledge items
+            // No client specified - search all (fallback, less common)
             knowledgeItems = await db.prepare(`
-                SELECT id, type, title, content, metadata, created_at
+                SELECT id, type, title, content, metadata, layer, created_at
                 FROM knowledge_items
-                WHERE status = 'ready'
+                WHERE status = 'ready' AND layer != 'library'
                 ORDER BY created_at DESC
                 LIMIT 50
             `).all();
@@ -881,20 +925,20 @@ async function queryKnowledgeBase(knowledgeBaseId, query, clientId = null) {
 
         // Log each item for debugging
         knowledgeItems.forEach((item, i) => {
-            console.log(`[KNOWLEDGE] Item ${i + 1}: type=${item.type}, title="${item.title}", content_preview="${(item.content || '').substring(0, 50)}..."`);
+            console.log(`[KNOWLEDGE] Item ${i + 1}: layer=${item.layer}, type=${item.type}, title="${item.title}"`);
         });
 
-        // Return ALL knowledge items so the AI can decide what's relevant
-        // The previous keyword matching was too restrictive
+        // Return ALL matching knowledge items so the AI can decide what's relevant
         const formattedDocs = knowledgeItems.map(item => ({
             id: item.id,
             title: item.title,
             type: item.type,
-            content: item.content || '', // Full content, not truncated
+            layer: item.layer,
+            content: item.content || '',
             createdAt: item.created_at
         }));
 
-        console.log(`[KNOWLEDGE] Returning ${formattedDocs.length} documents to AI`);
+        console.log(`[KNOWLEDGE] Returning ${formattedDocs.length} documents to AI (excluding library items)`);
 
         return {
             found: formattedDocs.length > 0,
@@ -1096,7 +1140,7 @@ router.post('/consensus', authMiddleware, async (req, res) => {
 
         // Query knowledge base for context
         const userQuery = messages[messages.length - 1]?.content || '';
-        const knowledgeResult = await queryKnowledgeBase(knowledgeBaseId, userQuery, clientId);
+        const knowledgeResult = await queryKnowledgeBase(knowledgeBaseId, userQuery, clientId, userId, req.user?.role);
 
         // Build RAG context
         const ragContext = {

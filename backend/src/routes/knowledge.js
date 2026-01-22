@@ -139,12 +139,15 @@ router.post('/voice', optionalAuth, upload.single('audio'), async (req, res) => 
         console.log(`[KNOWLEDGE] Attempting to save to DB: itemId=${itemId}, clientId=${clientId}`);
 
         try {
+            // Extract layer from request body (default to 'personal')
+            const layer = req.body.layer || 'personal';
+
             // Use await on the insert - db.prepare().run() returns a Promise on PostgreSQL
             const insertResult = await db.prepare(`
-                INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(itemId, clientId, 'voice_memo', itemTitle, transcription, 'ready', metadata);
-            console.log(`[KNOWLEDGE] Saved voice memo ${itemId} for client ${clientId}`, insertResult);
+                INSERT INTO knowledge_items (id, company_id, user_id, type, title, content, layer, status, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(itemId, clientId, userId, 'voice_memo', itemTitle, transcription, layer, 'ready', metadata);
+            console.log(`[KNOWLEDGE] Saved voice memo ${itemId} for client ${clientId}, layer: ${layer}`, insertResult);
         } catch (dbError) {
             console.error('[KNOWLEDGE] Database save error:', dbError);
             console.error('[KNOWLEDGE] DB Error details:', dbError.message, dbError.stack);
@@ -203,12 +206,15 @@ router.post('/text', optionalAuth, async (req, res) => {
             createdAt: new Date().toISOString()
         });
 
-        await db.prepare(`
-            INSERT INTO knowledge_items (id, company_id, type, title, content, status, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(itemId, clientId, type || 'text', itemTitle, content, 'ready', metadata);
+        // Extract layer from request body (default to 'personal')
+        const layer = req.body.layer || 'personal';
 
-        console.log(`[KNOWLEDGE] Saved text item ${itemId} for client ${clientId}`);
+        await db.prepare(`
+            INSERT INTO knowledge_items (id, company_id, user_id, type, title, content, layer, status, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(itemId, clientId, userId, type || 'text', itemTitle, content, layer, 'ready', metadata);
+
+        console.log(`[KNOWLEDGE] Saved text item ${itemId} for client ${clientId}, layer: ${layer}`);
 
         res.json({
             success: true,
