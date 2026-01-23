@@ -1,0 +1,25 @@
+{
+    "short_name": "BAM.ai",
+    "name": "BAM.ai - AI Knowledge Brain",
+    "description": "AI-Powered Employee Knowledge Cloning Platform",
+    "icons": [
+        {
+            "src": "icon-192.png",
+            "type": "image/png",
+            "sizes": "192x192",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "icon-512.png",
+            "type": "image/png",
+            "sizes": "512x512",
+            "purpose": "any maskable"
+        }
+    ],
+    "start_url": "/app/",
+    "scope": "/app/",
+    "display": "standalone",
+    "theme_color": "#0a0a0f",
+    "background_color": "#0a0a0f",
+    "orientation": "portrait-primary"
+}
