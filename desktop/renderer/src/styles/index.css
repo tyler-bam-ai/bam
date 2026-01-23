@@ -448,6 +448,13 @@ body {
   line-height: var(--line-height-normal);
   color: var(--color-text-primary);
   background-color: var(--color-bg-primary);
+  /* overflow: hidden removed - breaks mobile scroll on login page */
+  /* app-layout handles overflow for authenticated views */
+}
+
+/* App container (authenticated views) should not scroll */
+.app-layout,
+.app-shell {
   overflow: hidden;
 }
 
